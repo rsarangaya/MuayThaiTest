@@ -54,7 +54,7 @@ class Player {
   _ground(x, z, feet) {
     let g = 0, n = null;
     for (const s of this.solids) {
-      if (!this.map.overlap(s, x, z, PC.R * 0.9)) continue;
+      if (s.rope || !this.map.overlap(s, x, z, PC.R * 0.9)) continue;   // ropes block sideways but can't be stood on
       const top = this.map.topOver(s, x, z, PC.R * 0.9);
       if (top <= feet + PC.STEP && top > g - 1e-6) { g = Math.max(g, top); n = s; }
     }
@@ -221,7 +221,7 @@ class Player {
     for (const off of [0, 0.28, -0.28]) {
       const px = this.pos.x + dx * dist + lx * off, pz = this.pos.z + dz * dist + lz * off;
       for (const s of this.solids) {
-        if (s.kind !== 'box' || !(px > s.x0 && px < s.x1 && pz > s.z0 && pz < s.z1)) continue;
+        if (s.rope || s.kind !== 'box' || !(px > s.x0 && px < s.x1 && pz > s.z0 && pz < s.z1)) continue;
         const rise = s.y1 - feet;
         if (rise < minRise || rise > maxRise || s.y0 > feet + this.height - 0.2) continue;
         if (!hit || s.y1 < hit.y1) hit = s;

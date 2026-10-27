@@ -1,4 +1,5 @@
 ﻿// Headless physics sanity checks: node tools/sim.js
+// The movement course is switched off in the game map; run with MAP_FULL=1 ($env:MAP_FULL='1') to test against it.
 const MAP = require('../js/map.js');
 const { Player } = require('../js/player.js');
 const DT = 1 / 120;

@@ -5,8 +5,12 @@
 // Solids:  box  {x0,x1,z0,z1,y0,y1}
 //          ramp {x0,x1,z0,z1,y0,y1,axis:'x'|'z',up:+1|-1}  surface rises from y0 to y1 toward +axis (up=1) or -axis (up=-1)
 const MAP = (function () {
-  const solids = [], pads = [], spawns = [], labels = [], bags = [];
-  const HALF = 90;
+  const solids = [], pads = [], spawns = [], labels = [], bags = [], decor = [], ropes = [];
+  // The movement test course (ledges, slide hill, canyon, tower...) is switched off: the map is just the ring, the bot
+  // and the heavy bags. Run the headless sim with MAP_FULL=1 to bring the full course (and its old coordinates) back.
+  const FULL = typeof process !== 'undefined' && !!(process.env && process.env.MAP_FULL);
+  const HALF = FULL ? 90 : 46;
+  const RING = FULL ? { cx: -66, cz: -62, hx: 7.5, hz: 7.5, y: 0.3 } : { cx: 0, cz: -34, hx: 7.5, hz: 7.5, y: 0.3 }; // fighting area (bot stays inside)
 
   const C = { floor: 0x394150, wall: 0x2b3140, ledge: 0xe8833a, tall: 0x3fa7a0, ramp: 0x6a7fd1, pillar: 0x8b93a7, slab: 0xc9505a, tower: 0x7a5fb0 };
 
@@ -27,6 +31,13 @@ const MAP = (function () {
 
     spawns.push({ name: 'Spawn plaza', x: 0, z: 0, yaw: 0 });
 
+    if (FULL) courseLayout();
+    ringLayout();
+    // --- Heavy bags (combat sandbox) ---
+    [-6, -2, 2, 6].forEach(x => bags.push({ x, z: -9, ax: 0, az: 0, vx: 0, vz: 0, flash: 0 }));
+  }
+
+  function courseLayout() {
     // --- Ledge / mantle course (east of spawn). Heights are labelled. ---
     [0.6, 1.0, 1.4, 1.8, 2.2, 2.6, 3.0].forEach((h, i) => box(12 + i * 5, -6, 3, 3, 0, h, C.ledge, h.toFixed(1) + 'm'));
     [3.5, 4.5, 5.5].forEach((h, i) => box(14 + i * 7, -14, 4, 4, 0, h, C.ledge, h.toFixed(1) + 'm'));
@@ -73,9 +84,30 @@ const MAP = (function () {
     pads.push({ x: 0, z: 14, r: 1.8, vy: 17, fx: 0, fz: 0, color: 0x3ff0ff });
     pads.push({ x: 0, z: -16, r: 1.8, vy: 13, fx: 0, fz: -13, color: 0xffd23f });
     pads.push({ x: 30, z: 6, r: 1.8, vy: 21, fx: 0, fz: 0, color: 0x3ff0ff });
+  }
 
-    // --- Heavy bags (combat sandbox) ---
-    [-6, -2, 2, 6].forEach(x => bags.push({ x, z: -9, ax: 0, az: 0, vx: 0, vz: 0, flash: 0 }));
+  function ringLayout() {
+    // --- Sparring ring (bot lives here). Platform is solid; ropes are solid up to the top rope. ---
+    box(RING.cx, RING.cz, 2 * RING.hx + 1, 2 * RING.hz + 1, 0, RING.y, 0x3a4256);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) decor.push({ x0: RING.cx + sx * RING.hx - 0.12, x1: RING.cx + sx * RING.hx + 0.12, z0: RING.cz + sz * RING.hz - 0.12, z1: RING.cz + sz * RING.hz + 0.12, y0: RING.y, y1: RING.y + 1.7, color: 0xdddddd });
+    // Ropes: invisible thin barriers up to the top rope. They block walking but can be jumped over (not stood
+    // on or mantled, see player.js). The ring is fully enclosed.
+    const WT = 0.12, WH = 1.45;
+    const wall = (x0, x1, z0, z1) => solids.push({ kind: 'box', x0, x1, z0, z1, y0: 0, y1: RING.y + WH, hidden: true, rope: true });
+    wall(RING.cx - RING.hx - WT, RING.cx + RING.hx + WT, RING.cz - RING.hz - WT, RING.cz - RING.hz + WT);
+    wall(RING.cx - RING.hx - WT, RING.cx - RING.hx + WT, RING.cz - RING.hz, RING.cz + RING.hz);
+    wall(RING.cx + RING.hx - WT, RING.cx + RING.hx + WT, RING.cz - RING.hz, RING.cz + RING.hz);
+    wall(RING.cx - RING.hx - WT, RING.cx + RING.hx + WT, RING.cz + RING.hz - WT, RING.cz + RING.hz + WT);
+    for (const h of [0.75, 1.1, 1.45]) {
+      const y = RING.y + h, c = h === 1.1 ? 0xeeeeee : 0xc23a3a;
+      const x0 = RING.cx - RING.hx, x1 = RING.cx + RING.hx, z0 = RING.cz - RING.hz, z1 = RING.cz + RING.hz;
+      // each rope: end points + outward direction (taut; it bows only where something presses on it)
+      ropes.push({ ax: x0, az: z0, bx: x1, bz: z0, ox: 0, oz: -1, y, color: c });
+      ropes.push({ ax: x0, az: z0, bx: x0, bz: z1, ox: -1, oz: 0, y, color: c });
+      ropes.push({ ax: x1, az: z0, bx: x1, bz: z1, ox: 1, oz: 0, y, color: c });
+      ropes.push({ ax: x0, az: z1, bx: x1, bz: z1, ox: 0, oz: 1, y, color: c });
+    }
+    spawns.push({ name: 'Sparring ring', x: RING.cx, z: RING.cz + RING.hz - 1.5, yaw: 0 });
   }
 
   // ---------- geometry queries (used by physics) ----------
@@ -146,6 +178,7 @@ const MAP = (function () {
     const mat = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({ color: c, map: panelTex }));
 
     for (const s of solids) {
+      if (s.hidden) continue;
       let mesh;
       if (s.kind === 'box') {
         const w = s.x1 - s.x0, h = s.y1 - s.y0, d = s.z1 - s.z0;
@@ -164,6 +197,17 @@ const MAP = (function () {
       }
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 20), edgeMat));
       scene.add(mesh);
+    }
+    for (const d of decor) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(d.x1 - d.x0, d.y1 - d.y0, d.z1 - d.z0), new THREE.MeshLambertMaterial({ color: d.color }));
+      m.position.set((d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, (d.z0 + d.z1) / 2); scene.add(m);
+    }
+    // Ropes are taut at rest and only bend (and wobble back) where something presses on them.
+    const ropeMat = {};
+    for (const r of ropes) {
+      r.len = Math.hypot(r.bx - r.ax, r.bz - r.az); r.amp = 0; r.av = 0; r.s0 = r.len / 2; r.drawn = NaN;
+      r.THREE = THREE; r.mat = ropeMat[r.color] || (ropeMat[r.color] = new THREE.MeshLambertMaterial({ color: r.color }));
+      r.mesh = new THREE.Mesh(new THREE.BufferGeometry(), r.mat); scene.add(r.mesh); rebuildRope(r);
     }
     for (const l of labels) { const sp = labelSprite(THREE, l.text); sp.position.set(l.x, l.y, l.z); scene.add(sp); }
 
@@ -186,7 +230,40 @@ const MAP = (function () {
     }
   }
 
-  function update(dt) {
+  // rope shape: straight between the posts, pushed along its outward normal by r.amp around r.s0 (metres along the rope)
+  function rebuildRope(r) {
+    const T = r.THREE, pts = [], N = 28, ux = (r.bx - r.ax) / r.len, uz = (r.bz - r.az) / r.len;
+    for (let i = 0; i <= N; i++) {
+      const s = r.len * i / N, g = Math.exp(-Math.pow((s - r.s0) / 1.4, 2)) * Math.sin(Math.PI * i / N) ** 0.5, d = r.amp * g;
+      pts.push(new T.Vector3(r.ax + ux * s + r.ox * d, r.y - Math.abs(d) * 0.12, r.az + uz * s + r.oz * d));
+    }
+    const geo = new T.TubeGeometry(new T.CatmullRomCurve3(pts), 48, 0.03, 8);
+    r.mesh.geometry.dispose(); r.mesh.geometry = geo; r.drawn = r.amp;
+  }
+
+  // pl: player (pos, vel, height) – a rope the player is pressed against bows away from them, then springs back
+  function updateRopes(dt, pl) {
+    for (const r of ropes) {
+      if (!r.mesh) continue;
+      let target = 0;
+      if (pl) {
+        const px = pl.pos.x, pz = pl.pos.z, ux = (r.bx - r.ax) / r.len, uz = (r.bz - r.az) / r.len;
+        const s = (px - r.ax) * ux + (pz - r.az) * uz, d = (px - r.ax) * r.ox + (pz - r.az) * r.oz;   // d > 0: player outside the ring
+        if (s > -0.3 && s < r.len + 0.3 && Math.abs(d) < 0.62 && pl.pos.y < r.y + 0.05 && pl.pos.y + 1.5 > r.y) {
+          const away = d < 0 ? -1 : 1;                                       // player inside (-1): rope bows outward (+amp); outside: inward
+          const into = Math.max(0, (pl.vel.x * r.ox + pl.vel.z * r.oz) * -away);
+          r.s0 += (Math.max(0, Math.min(r.len, s)) - r.s0) * Math.min(1, dt * 20);
+          target = -away * Math.min(0.32, 0.07 + (0.62 - Math.abs(d)) * 0.5 + into * 0.03);
+        }
+      }
+      r.av += (-80 * (r.amp - target) - 6 * r.av) * dt; r.amp += r.av * dt;   // underdamped spring -> wobble on release
+      if (!target && Math.abs(r.amp) < 0.002 && Math.abs(r.av) < 0.02) { r.amp = 0; r.av = 0; }
+      if (Math.abs(r.amp - r.drawn) > 0.002 || (r.amp === 0 && r.drawn !== 0)) rebuildRope(r);
+    }
+  }
+
+  function update(dt, pl) {
+    updateRopes(dt, pl);
     for (const b of bags) {
       b.vx += (-26 * b.ax - 0.9 * b.vx) * dt; b.vz += (-26 * b.az - 0.9 * b.vz) * dt;
       b.ax += b.vx * dt; b.az += b.vz * dt;
@@ -213,6 +290,6 @@ const MAP = (function () {
   }
 
   layout();
-  return { solids, pads, spawns, bags, HALF, overlap, topOver, normalOf, build, update, hitBags };
+  return { solids, pads, spawns, bags, decor, ropes, RING, HALF, overlap, topOver, normalOf, build, update, hitBags };
 })();
 if (typeof module !== 'undefined') module.exports = MAP;

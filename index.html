@@ -10,6 +10,7 @@
   html,body { margin:0; height:100%; overflow:hidden; background:#10131a; color:var(--fg); font:13px/1.4 "Segoe UI",system-ui,sans-serif; user-select:none; }
   canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
   #crosshair { position:fixed; left:50%; top:50%; width:4px; height:4px; margin:-2px; border-radius:50%; background:#fff; opacity:.7; }
+  #aim { position:fixed; left:50%; top:calc(50% + 18px); transform:translateX(-50%); font:700 10px Consolas,monospace; letter-spacing:.12em; color:#fff; opacity:.55; text-shadow:0 1px 3px #000; white-space:nowrap; }
   #speedbox { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); text-align:center; text-shadow:0 1px 4px #000; }
   #speed { font:700 44px/1 "Consolas",monospace; }
   #speedbox small { font-size:12px; color:var(--dim); margin-left:4px; }
@@ -36,11 +37,20 @@
   .settings { margin-top:18px; text-align:left; cursor:default; display:grid; grid-template-columns:90px 1fr 44px; gap:8px 10px; align-items:center; font-size:12px; color:var(--dim); }
   .settings input[type=range] { width:100%; } .settings .v { color:var(--fg); font-family:Consolas,monospace; text-align:right; }
   .hint { margin-top:14px; font-size:11px; color:var(--dim); }
+  #bars { position:fixed; left:50%; top:14px; transform:translateX(-50%); display:flex; gap:18px; align-items:center; font:700 11px Consolas,monospace; letter-spacing:.14em; text-shadow:0 1px 3px #000; }
+  .bar { width:230px; height:10px; background:rgba(0,0,0,.45); border-radius:5px; overflow:hidden; border:1px solid rgba(255,255,255,.25); }
+  .bar i { display:block; height:100%; width:100%; transition:width .12s; } #hpYou { background:#4fd17a; } #hpBot { background:#ff5a4d; float:right; }
+  #telegraph { position:fixed; left:50%; top:58px; transform:translateX(-50%); font:700 15px Consolas,monospace; letter-spacing:.1em; color:#ff6b5a; text-shadow:0 1px 5px #000; opacity:0; white-space:nowrap; pointer-events:none; }
+  #hurt { position:fixed; inset:0; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(220,20,20,.85) 100%); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="crosshair"></div>
+<div id="aim"></div>
+<div id="hurt"></div>
+<div id="bars"><span>YOU</span><div class="bar"><i id="hpYou"></i></div><div class="bar"><i id="hpBot"></i></div><span>BOT</span></div>
+<div id="telegraph"></div>
 <div id="topleft"><b id="zone"></b> &nbsp;·&nbsp; <span id="fps"></span><br><kbd>F1</kbd> controls &nbsp; <kbd>Backspace</kbd> respawn &nbsp; <kbd>[</kbd> <kbd>]</kbd> zone</div>
 <div id="help">
   <h4>Movement</h4>
@@ -49,15 +59,15 @@
   <div><span>Jump · hold to bhop</span><span><kbd>Space</kbd></span></div>
   <div><span>Crouch / slide</span><span><kbd>C</kbd> / <kbd>Ctrl</kbd></span></div>
   <div><span>Toggle auto-sprint</span><span><kbd>T</kbd></span></div>
-  <h4>Punches</h4>
+  <h4>Punches · aim low = body, level = head</h4>
   <div><span>Jab (lead hand)</span><span><kbd>LMB</kbd></span></div>
   <div><span>Cross (rear hand)</span><span><kbd>RMB</kbd></span></div>
-  <div><span>Hook</span><span><kbd>R</kbd> / <kbd>MMB</kbd></span></div>
-  <h4>Kicks (right leg · hold Q = left)</h4>
-  <div><span>Leg kick</span><span><kbd>1</kbd></span></div>
-  <div><span>Mid kick</span><span><kbd>2</kbd></span></div>
-  <div><span>High kick</span><span><kbd>3</kbd></span></div>
-  <div><span>Teep</span><span><kbd>4</kbd></span></div>
+  <div><span>Right hook</span><span><kbd>R</kbd> / <kbd>MMB</kbd></span></div>
+  <div><span>Left hook</span><span><kbd>E</kbd></span></div>
+  <h4>Kicks · aim = target (legs / body / head)</h4>
+  <div><span>Roundhouse (hold Q = left leg)</span><span><kbd>1</kbd></span></div>
+  <div><span>Teep, lead leg</span><span><kbd>2</kbd></span></div>
+  <div><span>Teep, rear leg</span><span><kbd>3</kbd></span></div>
   <div><span>Knee (clinch)</span><span><kbd>5</kbd></span></div>
   <div><span>Elbow</span><span><kbd>6</kbd></span></div>
   <h4>Checks (hold · Q = left leg)</h4>
@@ -78,7 +88,7 @@
 <div id="overlay">
   <div class="card">
     <h1>MUAY THAI FPS · MOVEMENT LAB</h1>
-    <p>Apex-style movement test map. Combat moves are animation-only for now (heavy bags react).</p>
+    <p>Apex-style movement test map. Heavy bags react to strikes; a sparring bot waits in the ring (press <b>]</b> to cycle to "Sparring ring"). Hit damage is a placeholder for the real battle system.</p>
     <span class="go">CLICK TO PLAY</span>
     <div class="settings">
       <label for="sens">Sensitivity</label><input id="sens" type="range" min="0.2" max="3" step="0.05"><span class="v" id="sensv"></span>
@@ -93,6 +103,7 @@
 <script src="js/map.js"></script>
 <script src="js/player.js"></script>
 <script src="js/viewmodel.js"></script>
+<script src="js/bot.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

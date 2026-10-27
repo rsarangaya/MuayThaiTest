@@ -40,26 +40,85 @@
     else if (name === 'superglide') toast('SUPERGLIDE', 'hot');
     else if (name === 'pad') toast('LAUNCH PAD');
   };
+  // ---------- sparring bot + simple hit resolution (placeholder for the real battle system) ----------
+  const bot = new Bot(THREE, scene, MAP.RING);
+  let hp = 100, shake = 0, hurtFlash = 0, teleT = 0;
+  const PATK = { jab: { level: 'high', dmg: 4 }, cross: { level: 'high', dmg: 7 }, hook: { level: 'high', dmg: 9 }, elbow: { level: 'high', dmg: 11 },
+    legkick: { level: 'low', dmg: 8 }, midkick: { level: 'mid', dmg: 10 }, highkick: { level: 'high', dmg: 12 }, teep: { level: 'mid', dmg: 5 }, knee: { level: 'mid', dmg: 10 } };
+  PATK.jabB = { type: 'jab', level: 'mid', dmg: 5 }; PATK.crossB = { type: 'cross', level: 'mid', dmg: 8 }; PATK.hookB = { type: 'hook', level: 'mid', dmg: 10 };
+  const BOT_NAME = { jab: 'JAB', cross: 'CROSS', lhook: 'LEFT HOOK', rhook: 'RIGHT HOOK', legkick: 'LEG KICK', midkick: 'MID KICK', highkick: 'HIGH KICK', teep: 'TEEP', rteep: 'REAR TEEP',
+    jabB: 'BODY JAB', crossB: 'BODY CROSS', lhookB: 'BODY HOOK' };
+  const BOT_HINT = { jab: 'BLOCK / LONG GUARD', cross: 'BLOCK / LONG GUARD', lhook: 'BLOCK', rhook: 'BLOCK', legkick: 'CHECK LOW', midkick: 'CHECK MID / BLOCK', highkick: 'BLOCK / CHECK HIGH · or duck', teep: 'LONG GUARD / CHECK MID', rteep: 'LONG GUARD / CHECK MID',
+    jabB: 'BLOCK / LONG GUARD', crossB: 'BLOCK / LONG GUARD', lhookB: 'BLOCK' };
+
   vm.onActive = (name, side, def) => {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     if (MAP.hitBags(player.pos.x, player.pos.z, fx, fz, def.reach, def.impulse)) { toast('HIT · ' + name.toUpperCase(), 'hit'); }
+    const A = PATK[name]; if (!A) return;
+    const bx = bot.x - player.pos.x, bz = bot.z - player.pos.z, d = Math.hypot(bx, bz);
+    if (d < 0.01 || (bx * fx + bz * fz) / d < 0.62) return; // bot not in front of the strike
+    const res = bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: A.dmg, dist: d, dx: bx / d, dz: bz / d });
+    if (res === 'hit') toast('HIT · ' + name.toUpperCase(), 'hit');
+    else if (res === 'blocked') toast('BLOCKED', 'hot');
+    else if (res === 'checked') toast('CHECKED', 'hot');
+    else if (res === 'dodged') toast('DODGED', 'hot');
+    if (res === 'hit') shake = Math.max(shake, 0.25);
   };
+
+  bot.onTelegraph = a => {
+    const mySide = a.side === 'L' ? 'R' : 'L';
+    const hint = BOT_HINT[a.name] + (a.type === 'hook' || a.level !== 'high' || a.type === 'highkick' ? ' ' + (a.type === 'teep' ? '' : mySide) : '');
+    $('telegraph').textContent = BOT_NAME[a.name] + '  →  ' + hint; teleT = 0.9;
+  };
+  bot.onActive = a => {
+    const dx = player.pos.x - bot.x, dz = player.pos.z - bot.z, d = Math.hypot(dx, dz);
+    if (d - bot.f.cur[22] > a.reach + 0.3) return;
+    if (a.level === 'low' && player.pos.y - bot.y > 0.5) { toast('JUMPED IT', 'hot'); return; }
+    if (a.level === 'high' && (player.crouched || player.sliding)) { toast('DUCKED', 'hot'); return; }
+    const mySide = a.side === 'L' ? 'R' : 'L', h = vm.holds;
+    const punch = a.type === 'jab' || a.type === 'cross' || a.type === 'hook';
+    const sideOk = a.type === 'jab' || a.type === 'cross';
+    let res = 'hit';
+    if (h.longGuard && (a.type === 'jab' || a.type === 'cross' || a.type === 'teep')) res = 'blocked';
+    else if (h.block && (punch || a.type === 'highkick' || a.type === 'midkick') && (sideOk || h.block === mySide)) res = 'blocked';
+    else if (h.check === a.level && (h.checkSide === mySide || a.type === 'teep') && a.type !== 'jab' && !punch) res = 'checked';
+    if (res === 'checked') { toast('CHECKED', 'hot'); bot.stagger(); return; }
+    if (res === 'blocked') { toast('BLOCKED', 'hot'); hp -= a.dmg * 0.15; shake = Math.max(shake, 0.1); }
+    else { hp -= a.dmg; hurtFlash = 1; shake = Math.max(shake, 0.4); toast('-' + a.dmg + ' HP', 'hit'); if (player.onGround && d > 0.01) { player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; } }
+    if (hp <= 0) { toast('KO', 'hit'); hp = 100; bot.reset(); player.respawn(MAP.spawns[zoneIdx]); }
+  };
+  bot.onKO = () => toast('BOT KO', 'hot');
+
   // Roundhouse opens with a 45-degree step: shove the body diagonally forward, away from the kicking side.
   vm.onStart = (name, side, def) => {
+    const lvl = PATK[name];
+    if (lvl && Math.hypot(bot.x - player.pos.x, bot.z - player.pos.z) < 5) bot.notice(name === 'knee' ? 'midkick' : name === 'elbow' ? 'hook' : lvl.type || name, side, lvl.level);
     if (!def.step || !player.onGround || player.mantle) return;
     const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw), s = side === 'R' ? -1 : 1, r = Math.SQRT1_2;
     const dx = -sy * r + cy * r * s, dz = -cy * r + -sy * r * s;
     player.vel.x += dx * def.step; player.vel.z += dz * def.step;
   };
   function goZone(i) {
-    zoneIdx = (i + MAP.spawns.length) % MAP.spawns.length; player.respawn(MAP.spawns[zoneIdx]);
+    zoneIdx = (i + MAP.spawns.length) % MAP.spawns.length; player.respawn(MAP.spawns[zoneIdx]); hp = 100; bot.reset();
     peak = 0; $('zone').textContent = MAP.spawns[zoneIdx].name;
   }
   goZone(0);
 
+  // ---------- aiming: strike height follows where the crosshair points ----------
+  // Height (above the target's feet) of the point under the crosshair, measured at the bot's distance when it is
+  // roughly ahead and close, otherwise 2 m out.
+  function aimHeight() {
+    const dx = bot.x - player.pos.x, dz = bot.z - player.pos.z, d = Math.hypot(dx, dz);
+    const near = d < 6 && d > 0.01 && (dx * -Math.sin(player.yaw) + dz * -Math.cos(player.yaw)) / d > 0.5;
+    return player.pos.y + eye + Math.tan(player.pitch) * (near ? d : 2) - (near ? bot.y : player.pos.y);
+  }
+  const kickLevel = () => { const h = aimHeight(); return h < 0.7 ? 'low' : h < 1.4 ? 'mid' : 'high'; };
+  const kickName = () => ({ low: 'legkick', mid: 'midkick', high: 'highkick' })[kickLevel()];
+  const punchName = base => (aimHeight() < 1.15 ? base + 'B' : base);
+
   // ---------- input ----------
   const keys = {};
-  const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'KeyC', 'KeyQ', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6',
+  const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'KeyC', 'KeyQ', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6',
     'KeyZ', 'KeyX', 'KeyV', 'KeyF', 'KeyG', 'KeyH', 'Backspace', 'BracketLeft', 'BracketRight', 'KeyT', 'F1', 'Tab']);
   addEventListener('keydown', e => {
     if (GAME_KEYS.has(e.code)) e.preventDefault();
@@ -70,11 +129,11 @@
     if (c === 'Space') player.jumpBuf = 0.13;
     if (c === 'KeyC' || c === 'ControlLeft') player.crouchEdge = 0.1;
     if (c === 'KeyA' || c === 'KeyD') player.tapEdge = 0.12;
-    if (c === 'KeyR') vm.trigger('hook', keys.KeyQ);
-    if (c === 'Digit1') vm.trigger('legkick', keys.KeyQ);
-    if (c === 'Digit2') vm.trigger('midkick', keys.KeyQ);
-    if (c === 'Digit3') vm.trigger('highkick', keys.KeyQ);
-    if (c === 'Digit4') vm.trigger('teep', keys.KeyQ);
+    if (c === 'KeyR') vm.trigger(punchName('hook'), keys.KeyQ);          // right hook (Q held = left)
+    if (c === 'KeyE') vm.trigger(punchName('hook'), true);               // left hook
+    if (c === 'Digit1') vm.trigger(kickName(), keys.KeyQ);               // roundhouse: height follows where you look
+    if (c === 'Digit2') vm.trigger('teep', true);                        // lead-leg teep
+    if (c === 'Digit3') vm.trigger('teep', false);                       // rear-leg teep
     if (c === 'Digit5') vm.trigger('knee', keys.KeyQ);
     if (c === 'Digit6') vm.trigger('elbow', keys.KeyQ);
     if (c === 'KeyZ' || c === 'KeyX' || c === 'KeyV') vm.setHolds({ checkSide: keys.KeyQ ? 'L' : 'R' });
@@ -89,7 +148,7 @@
   addEventListener('contextmenu', e => e.preventDefault());
   addEventListener('mousedown', e => {
     if (!locked) return;
-    if (e.button === 0) vm.trigger('jab'); else if (e.button === 2) vm.trigger('cross'); else if (e.button === 1) { e.preventDefault(); vm.trigger('hook', keys.KeyQ); }
+    if (e.button === 0) vm.trigger(punchName('jab')); else if (e.button === 2) vm.trigger(punchName('cross')); else if (e.button === 1) { e.preventDefault(); vm.trigger(punchName('hook'), keys.KeyQ); }
   });
   addEventListener('mousemove', e => {
     if (!locked) return;
@@ -130,6 +189,13 @@
   let last = performance.now(), acc = 0, fpsT = 0, frames = 0;
   const hud = { speed: $('speed'), state: $('state'), peak: $('peak'), act: $('action'), bar: $('bar'), fps: $('fps') };
 
+  // the bot is a solid cylinder: shove the player out of it
+  function pushOutOfBot() {
+    if (bot.ko) return;
+    const dx = player.pos.x - bot.x, dz = player.pos.z - bot.z, d = Math.hypot(dx, dz), min = 0.85;
+    if (d < min && d > 0.001 && player.pos.y < bot.y + 1.5) { const o = (min - d) / d; player.pos.x += dx * o; player.pos.z += dz * o; }
+  }
+
   function frame(now) {
     requestAnimationFrame(frame);
     let dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -137,7 +203,8 @@
     if (locked) {
       readInput();
       acc += dt;
-      while (acc >= DT) { player.step(DT); acc -= DT; MAP.update(DT); }
+      while (acc >= DT) { player.step(DT); acc -= DT; MAP.update(DT, player); pushOutOfBot(); }
+      bot.update(dt, player);
     } else acc = 0;
     time += dt;
     const alpha = acc / DT;
@@ -167,6 +234,10 @@
     camera.rotation.y = player.yaw + k.yaw;
     camera.rotation.x = player.pitch + k.pitch + (player.mantle ? -0.08 : 0);
     camera.rotation.z = camRoll + k.roll;
+    if (shake > 0.001) { // hit reaction
+      camera.rotation.x += (Math.random() - 0.5) * shake * 0.08; camera.rotation.y += (Math.random() - 0.5) * shake * 0.08; camera.rotation.z += (Math.random() - 0.5) * shake * 0.06;
+      shake *= Math.exp(-8 * dt);
+    }
     renderer.render(scene, camera);
 
     // HUD
@@ -176,10 +247,14 @@
     hud.peak.textContent = 'TOP ' + peak.toFixed(1);
     hud.bar.style.width = Math.min(100, sp / 20 * 100) + '%';
     hud.bar.className = sp > 11 ? 'fast' : '';
+    $('aim').textContent = 'KICK ' + { low: 'LEGS', mid: 'BODY', high: 'HEAD' }[kickLevel()] + ' · PUNCH ' + (aimHeight() < 1.15 ? 'BODY' : 'HEAD');
     hud.act.textContent = vm.label;
     hud.act.style.opacity = vm.label ? 1 : 0;
+    $('hpYou').style.width = Math.max(0, hp) + '%'; $('hpBot').style.width = Math.max(0, bot.hp) + '%';
+    hurtFlash = Math.max(0, hurtFlash - dt * 2.5); $('hurt').style.opacity = hurtFlash * 0.55;
+    teleT -= dt; $('telegraph').style.opacity = teleT > 0 ? Math.min(1, teleT * 3) : 0;
   }
   requestAnimationFrame(frame);
 
-  window.game = { player, vm, MAP, settings, goZone, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
+  window.game = { player, vm, MAP, bot, settings, goZone, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
 })();
