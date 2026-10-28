@@ -40,6 +40,18 @@
   #bars { position:fixed; left:50%; top:14px; transform:translateX(-50%); display:flex; gap:18px; align-items:center; font:700 11px Consolas,monospace; letter-spacing:.14em; text-shadow:0 1px 3px #000; }
   .bar { width:230px; height:10px; background:rgba(0,0,0,.45); border-radius:5px; overflow:hidden; border:1px solid rgba(255,255,255,.25); }
   .bar i { display:block; height:100%; width:100%; transition:width .12s; } #hpYou { background:#4fd17a; } #hpBot { background:#ff5a4d; float:right; }
+  #train { position:fixed; right:14px; top:12px; background:var(--panel); border-radius:8px; padding:8px 12px; font:12px/1.5 Consolas,monospace; max-width:340px; text-shadow:0 1px 3px #000; }
+  #train b { color:var(--acc); letter-spacing:.14em; } #train .dim { color:var(--dim); font-size:10px; margin-top:3px; }
+  #prompt { position:fixed; left:50%; bottom:170px; transform:translateX(-50%); font:700 18px/1 Consolas,monospace; letter-spacing:.12em; color:#5dffa0; text-shadow:0 1px 5px #000; white-space:nowrap; pointer-events:none; }
+  .settings select { background:#2a3040; color:var(--fg); border:1px solid #3d4658; border-radius:5px; padding:3px 6px; font:12px "Segoe UI",system-ui,sans-serif; grid-column:2 / 4; }
+  #bars2 { position:fixed; left:50%; top:30px; transform:translateX(-50%); display:flex; gap:18px; align-items:center; font:700 9px Consolas,monospace; letter-spacing:.14em; color:var(--dim); text-shadow:0 1px 3px #000; }
+  #bars2 .bar { height:6px; } #bars2 span { width:22px; text-align:center; }
+  #stYou, #stBot { background:#f2c230; } #stBot { float:right; } .bar i.low { background:#ff7a2e !important; }
+  #clinch { position:fixed; left:50%; top:64%; transform:translateX(-50%); text-align:center; font:700 14px Consolas,monospace; letter-spacing:.12em; text-shadow:0 1px 4px #000; width:300px; }
+  #clinch .bar { width:300px; height:12px; margin-top:6px; } #clinchFill { background:#6fd3ff; width:0; }
+  #binds { margin-top:12px; text-align:left; cursor:default; max-height:34vh; overflow:auto; display:grid; grid-template-columns:1fr auto auto; gap:5px 8px; align-items:center; font-size:12px; color:var(--dim); padding-right:6px; }
+  #binds button, .btn { background:#2a3040; color:var(--fg); border:1px solid #3d4658; border-radius:5px; padding:3px 8px; min-width:92px; font:12px Consolas,monospace; cursor:pointer; }
+  #binds button.wait { background:var(--acc); color:#1a1200; } #binds button:hover, .btn:hover { border-color:var(--acc); }
   #telegraph { position:fixed; left:50%; top:58px; transform:translateX(-50%); font:700 15px Consolas,monospace; letter-spacing:.1em; color:#ff6b5a; text-shadow:0 1px 5px #000; opacity:0; white-space:nowrap; pointer-events:none; }
   #hurt { position:fixed; inset:0; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(220,20,20,.85) 100%); }
 </style>
@@ -50,32 +62,13 @@
 <div id="aim"></div>
 <div id="hurt"></div>
 <div id="bars"><span>YOU</span><div class="bar"><i id="hpYou"></i></div><div class="bar"><i id="hpBot"></i></div><span>BOT</span></div>
+<div id="bars2"><span>STA</span><div class="bar st"><i id="stYou"></i></div><div class="bar st"><i id="stBot"></i></div><span>STA</span></div>
+<div id="clinch" class="hidden"><div id="clinchLabel"></div><div class="bar"><i id="clinchFill"></i></div></div>
+<div id="train" class="hidden"><b>TRAINING</b> · BOT: <span id="trBot"></span><br><span id="trStats"></span><br><span id="trLast"></span><div class="dim">M spar/training · U bot mode · N difficulty</div></div>
+<div id="prompt"></div>
 <div id="telegraph"></div>
 <div id="topleft"><b id="zone"></b> &nbsp;·&nbsp; <span id="fps"></span><br><kbd>F1</kbd> controls &nbsp; <kbd>Backspace</kbd> respawn &nbsp; <kbd>[</kbd> <kbd>]</kbd> zone</div>
-<div id="help">
-  <h4>Movement</h4>
-  <div><span>Move</span><span><kbd>W A S D</kbd></span></div>
-  <div><span>Sprint (auto) / walk</span><span><kbd>Shift</kbd></span></div>
-  <div><span>Jump · hold to bhop</span><span><kbd>Space</kbd></span></div>
-  <div><span>Crouch / slide</span><span><kbd>C</kbd> / <kbd>Ctrl</kbd></span></div>
-  <div><span>Toggle auto-sprint</span><span><kbd>T</kbd></span></div>
-  <h4>Punches · aim low = body, level = head</h4>
-  <div><span>Jab (lead hand)</span><span><kbd>LMB</kbd></span></div>
-  <div><span>Cross (rear hand)</span><span><kbd>RMB</kbd></span></div>
-  <div><span>Right hook</span><span><kbd>R</kbd> / <kbd>MMB</kbd></span></div>
-  <div><span>Left hook</span><span><kbd>E</kbd></span></div>
-  <h4>Kicks · aim = target (legs / body / head)</h4>
-  <div><span>Roundhouse (hold Q = left leg)</span><span><kbd>1</kbd></span></div>
-  <div><span>Teep, lead leg</span><span><kbd>2</kbd></span></div>
-  <div><span>Teep, rear leg</span><span><kbd>3</kbd></span></div>
-  <div><span>Knee (clinch)</span><span><kbd>5</kbd></span></div>
-  <div><span>Elbow</span><span><kbd>6</kbd></span></div>
-  <h4>Checks (hold · Q = left leg)</h4>
-  <div><span>Low / Mid / High</span><span><kbd>Z</kbd> <kbd>X</kbd> <kbd>V</kbd></span></div>
-  <h4>Guard (hold)</h4>
-  <div><span>Block left / right</span><span><kbd>F</kbd> <kbd>G</kbd></span></div>
-  <div><span>Long guard</span><span><kbd>H</kbd></span></div>
-</div>
+<div id="help"></div>
 <div id="speedbox">
   <div><span id="speed">0.0</span><small>m/s</small></div>
   <div id="meter"><div id="bar"></div></div>
@@ -88,13 +81,18 @@
 <div id="overlay">
   <div class="card">
     <h1>MUAY THAI FPS · MOVEMENT LAB</h1>
-    <p>Apex-style movement test map. Heavy bags react to strikes; a sparring bot waits in the ring (press <b>]</b> to cycle to "Sparring ring"). Hit damage is a placeholder for the real battle system.</p>
+    <p>Walk to the green corner and press the enter key to step into the ring. A sparring bot waits inside; heavy bags react to strikes. Pick a difficulty or switch to training below. Hit damage is a placeholder for the real battle system.</p>
     <span class="go">CLICK TO PLAY</span>
     <div class="settings">
       <label for="sens">Sensitivity</label><input id="sens" type="range" min="0.2" max="3" step="0.05"><span class="v" id="sensv"></span>
       <label for="fov">Field of view</label><input id="fov" type="range" min="60" max="100" step="1"><span class="v" id="fovv"></span>
       <label for="auto">Auto-sprint</label><input id="auto" type="checkbox"><span></span>
+      <label for="modeSel">Mode</label><select id="modeSel"><option value="spar">Sparring</option><option value="train">Training (no damage, infinite stamina)</option></select>
+      <label for="diffSel">Difficulty</label><select id="diffSel"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option><option value="nak">Nak Muay (brutal)</option></select>
+      <label for="trainSel">Training bot</label><select id="trainSel"><option value="dummy">Dummy (stands still)</option><option value="guard">Guard (holds a high guard)</option><option value="drill">Drill (slow single strikes at you)</option></select>
     </div>
+    <div class="settings" style="display:block;margin-top:10px"><button class="btn" id="bindToggle">Customize controls ▾</button> <button class="btn hidden" id="bindReset">Reset to default</button></div>
+    <div id="binds" class="hidden"></div>
     <div class="hint">Esc to pause · F1 toggles the controls list in-game</div>
   </div>
 </div>

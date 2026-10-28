@@ -156,6 +156,9 @@ function holdPoses(h) {
     const L = h.checkSide === 'L';
     out[L ? 'LL' : 'RL'] = [L ? -0.26 : 0.26, CHECK_FOOT_Y[h.check], -0.5, 0, 0, 0];
   }
+  // muay thai plum: 'hold' = both gloves locked behind the opponent's head; 'held' = being pulled down, hands shoving at the chest
+  if (h.clinch === 'hold') { out.LH = [-0.1, -0.27, -0.66, 0.65, 0.3, 0]; out.RH = [0.1, -0.27, -0.66, 0.65, -0.3, 0]; }
+  if (h.clinch === 'held') { out.LH = [-0.2, -0.28, -0.62, 0.6, -0.15, 0]; out.RH = [0.2, -0.28, -0.62, 0.6, 0.15, 0]; }
   return out;
 }
 
@@ -220,7 +223,7 @@ class ViewModel {
     // body motion the main loop applies to the camera: yaw/pitch/roll + sideways/forward offset
     this.camKick = { yaw: 0, pitch: 0, roll: 0, ox: 0, oz: 0 };
     this.onActive = () => {}; this.onStart = () => {};
-    this.sway = { x: 0, y: 0 }; this.lastYaw = 0; this.lastPitch = 0;
+    this.sway = { x: 0, y: 0 }; this.lastYaw = 0; this.lastPitch = 0; this.clp = 0;
   }
 
   // Start (or queue) a move. Returns true if it started immediately.
@@ -257,6 +260,7 @@ class ViewModel {
   get label() {
     if (this.action) return this.name;
     const h = this.holds;
+    if (h.clinch) return h.clinch === 'hold' ? 'PLUM CLINCH' : 'IN THE PLUM';
     if (h.check) return 'CHECK ' + h.check.toUpperCase() + ' (' + h.checkSide + ')';
     if (h.longGuard) return 'LONG GUARD';
     if (h.block) return 'BLOCK ' + h.block;
@@ -312,6 +316,11 @@ class ViewModel {
         g.rotation.set(p[3], p[4], p[5]);
       }
     }
+    // plum: the head gets pulled down (and shaken when we're the one being held)
+    const cl = this.holds.clinch, tgtP = cl === 'hold' ? -0.04 : cl === 'held' ? -0.4 : 0;
+    this.clp += (tgtP - this.clp) * (1 - Math.exp(-6 * dt));
+    ck.pitch += this.clp;
+    if (cl === 'held') { ck.roll += Math.sin(ctx.time * 11) * 0.03; ck.yaw += Math.sin(ctx.time * 7.3) * 0.025; }
     this.root.rotation.z = -ctx.roll * 0.6;
   }
 

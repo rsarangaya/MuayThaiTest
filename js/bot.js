@@ -54,6 +54,8 @@ function roundhouse(level) {
     ],
   };
 }
+// bot walk speed (m/s); the player is capped to the same speed while inside the ring
+const BOT_SPEED = 3.0;
 const BMOVES = {
   jab: { type: 'jab', side: 'L', level: 'high', dur: 0.45, active: [0.3, 0.5], reach: 1.75, dmg: 4,
     keys: [K(0, null), K(0.3, P({ la: [1.45, 0.05, 0, 0.12], ty: 0.35, fwd: 0.12, tp: -0.15 }), 'i'), K(0.5, P({ la: [1.45, 0.05, 0, 0.12], ty: 0.35, fwd: 0.12, tp: -0.15 })), K(1, null, 'o')] },
@@ -88,6 +90,15 @@ const BMOVES = {
     keys: [K(0, null), K(0.28, P({ la: [0.4, -1.4, 0, 1.5], ty: 0.4, fwd: 0.05, drop: 0.12, tp: -0.3 })), K(0.48, P({ la: [0.4, -1.4, 0, 1.5], ty: -0.5, fwd: 0.15, drop: 0.14, tp: -0.4 }), 'i'),
       K(0.6, P({ la: [0.4, -1.4, 0, 1.5], ty: -0.65, fwd: 0.15, drop: 0.14, tp: -0.4 }), 'o'), K(1, null)] },
 };
+// ---- plum clinch: bot holding the player's head (hold), bot being held (held), and the plum knee ----
+const BCL = {
+  hold: P({ la: [1.8, 0.15, 0, 1.2], ra: [1.8, -0.15, 0, 1.2], tp: -0.28, hp: -0.2, drop: 0.06, fwd: 0.1 }),
+  held: P({ la: [0.9, 0.3, 0, 1.7], ra: [0.9, -0.3, 0, 1.7], tp: -0.6, hp: -0.7, drop: 0.12 }),
+  knee: { dur: 0.7, keys: [K(0, null), K(0.4, P({ rl: [1.7, 0.05, 0, 1.6], la: [1.8, 0.15, 0, 1.2], ra: [1.8, -0.15, 0, 1.2], tp: -0.38, hp: -0.2, drop: 0.05, fwd: 0.1 }), 'i'), K(0.55, P({ rl: [1.7, 0.05, 0, 1.6], la: [1.8, 0.15, 0, 1.2], ra: [1.8, -0.15, 0, 1.2], tp: -0.38, hp: -0.2, drop: 0.05, fwd: 0.1 })), K(1, null)] },
+};
+BMOVES.plum = { type: 'plum', side: 'L', level: 'high', dur: 0.75, active: [0.5, 0.62], reach: 1.5, dmg: 0,
+  keys: [K(0, null), K(0.5, P({ la: [1.75, 0.12, 0, 1.2], ra: [1.75, -0.12, 0, 1.2], tp: -0.3, fwd: 0.25, drop: 0.06, hp: -0.2 }), 'i'),
+    K(0.62, P({ la: [1.75, 0.12, 0, 1.2], ra: [1.75, -0.12, 0, 1.2], tp: -0.3, fwd: 0.25, drop: 0.06, hp: -0.2 })), K(1, null)] };
 const BFLINCH = { dur: 0.5, keys: [K(0, null), K(0.18, P({ tp: 0.38, hp: 0.4, la: [0.3, 0.15, 0, 1.9], ra: [0.3, -0.15, 0, 1.9], yaw: -0.2, drop: 0.06 }), 'o'), K(1, null)] };
 const BSTAGGER = { dur: 0.8, keys: [K(0, null), K(0.2, P({ tp: 0.5, hp: 0.5, la: [0.1, 0.2, 0, 1.2], ra: [0.1, -0.2, 0, 1.2], yaw: -0.3, drop: 0.1, rl: [-0.5, 0.1, 0, 0.7] }), 'o'), K(1, null)] };
 const BKO = { dur: 0.8, hold: true, keys: [K(0, null), K(1, P({ tilt: 1.5, drop: 0.2, tp: 0.15, hp: 0.3, la: [0.2, 0.7, 0, 0.5], ra: [0.2, -0.7, 0, 0.5], ll: [0.2, 0.2, 0, 0.2], rl: [0.1, -0.2, 0, 0.2] }), 'o')] };
@@ -110,7 +121,7 @@ const COMBOS = [
   { w: 3, seq: ['jab', 'cross', 'legkick'] }, { w: 2, seq: ['lhook', 'cross', 'midkick'] }, { w: 2, seq: ['teep', 'cross'] },
   { w: 2, seq: ['jab', 'highkick'] }, { w: 3, seq: ['midkick'] }, { w: 3, seq: ['legkick'] }, { w: 1.5, seq: ['highkick'] },
   { w: 2, seq: ['teep'] }, { w: 2, seq: ['cross', 'rhook'] },
-  { w: 1.5, seq: ['rteep'] }, { w: 2, seq: ['jabB', 'crossB'] }, { w: 2, seq: ['jab', 'lhookB', 'cross'] }, { w: 2, seq: ['jabB', 'cross', 'midkick'] },
+  { w: 1.3, seq: ['plum'] }, { w: 1.5, seq: ['rteep'] }, { w: 2, seq: ['jabB', 'crossB'] }, { w: 2, seq: ['jab', 'lhookB', 'cross'] }, { w: 2, seq: ['jabB', 'cross', 'midkick'] },
 ];
 const PUNCH = new Set(['jab', 'cross', 'hook', 'elbow']);
 
@@ -132,36 +143,38 @@ class Fighter {
     const m = (geo, mat, parent, x, y, z, sx, sy, sz) => { const o = new THREE.Mesh(geo, mat); o.position.set(x || 0, y || 0, z || 0); if (sx) o.scale.set(sx, sy, sz); parent.add(o); return o; };
     const S = (r, w, h) => new THREE.SphereGeometry(r, w || 14, h || 10);
 
-    // pelvis: trunks with a waistband, trim stripe and a knot
-    this.pelvis.add(cyl(0.185, 0.215, 0.3, shorts, -0.05, 16));
-    this.pelvis.add(cyl(0.192, 0.192, 0.055, trim, 0.1, 16));
-    this.pelvis.add(cyl(0.2, 0.22, 0.03, trim, -0.17, 16));
-    m(S(0.03, 8, 6), trim, this.pelvis, 0, 0.06, -0.19);
-    m(new THREE.BoxGeometry(0.03, 0.09, 0.012), trim, this.pelvis, 0.2, -0.05, -0.02);
+    // pelvis: wide muay thai trunks (waistband, knot, trim); each leg adds a flared trunk section that overlaps this
+    this.pelvis.add(cyl(0.19, 0.225, 0.34, shorts, -0.04, 18));
+    this.pelvis.add(cyl(0.197, 0.197, 0.06, trim, 0.115, 18));
+    this.pelvis.add(cyl(0.232, 0.232, 0.028, trim, -0.2, 18));
+    m(S(0.028, 8, 6), trim, this.pelvis, 0, 0.1, -0.2);
     this.torso = G(); this.torso.rotation.order = 'YXZ'; this.torso.position.y = 0.08; this.pelvis.add(this.torso);
-    // torso: tapered core, chest, pecs, abs, lats, traps
-    const chest = m(new THREE.BoxGeometry(0.4, 0.46, 0.22), skin, this.torso, 0, 0.29, 0);
-    m(new THREE.CylinderGeometry(0.155, 0.17, 0.22, 14), skin, this.torso, 0, 0.0, 0).scale.z = 0.85;
+    // torso: ribcage and abdomen as smooth ellipsoids, pecs, lats, traps, a few ab grooves
+    m(S(0.2, 24, 18), skin, this.torso, 0, 0.3, 0.0, 1.05, 1.2, 0.7);
+    m(new THREE.CylinderGeometry(0.145, 0.15, 0.26, 20), skin, this.torso, 0, 0.07, 0).scale.z = 0.8;
     for (const sx of [-1, 1]) {
-      m(S(0.105), skin, this.torso, sx * 0.1, 0.38, -0.085, 1, 0.78, 0.55);                     // pecs
-      m(S(0.09), dsk, this.torso, sx * 0.205, 0.26, 0.0, 0.55, 1.25, 0.8);                      // lats
-      m(S(0.085), skin, this.torso, sx * 0.1, 0.5, 0.0, 1.1, 0.55, 0.8);                       // traps
-      for (let r = 0; r < 3; r++) m(S(0.038, 8, 6), dsk, this.torso, sx * 0.04, 0.215 - r * 0.075, -0.1 + r * 0.004, 1, 0.8, 0.45); // abs
+      m(S(0.105, 16, 12), skin, this.torso, sx * 0.1, 0.37, -0.09, 1.05, 0.7, 0.55);            // pecs
+      m(S(0.09), dsk, this.torso, sx * 0.19, 0.25, 0.0, 0.5, 1.3, 0.8);                         // lats
+      m(S(0.085), skin, this.torso, sx * 0.1, 0.5, 0.0, 1.1, 0.55, 0.8);                        // traps
     }
-    const neck = cyl(0.058, 0.07, 0.12, skin, 0.55, 12); this.torso.add(neck);
+    m(new THREE.BoxGeometry(0.006, 0.21, 0.006), dsk, this.torso, 0, 0.1, -0.121);              // abs: centre line + grooves
+    for (let r = 0; r < 3; r++) m(new THREE.BoxGeometry(0.11, 0.006, 0.006), dsk, this.torso, 0, 0.02 + r * 0.07, -0.121);
+    this.torso.add(cyl(0.062, 0.076, 0.12, skin, 0.55, 14));                                    // neck
+    // head: skull + jaw, short hair, ears, brow / eyes / nose / mouth, red headband (no headgear)
     this.head = G(); this.head.rotation.order = 'YXZ'; this.head.position.y = 0.58; this.torso.add(this.head);
-    m(S(0.105, 18, 14), skin, this.head, 0, 0.1, -0.02, 0.93, 1.12, 1.0);                       // face
-    m(S(0.058, 10, 8), skin, this.head, 0, 0.075, -0.115, 0.7, 1, 0.9);                          // nose
+    m(S(0.105, 26, 18), skin, this.head, 0, 0.1, -0.005, 0.92, 1.1, 1.0);
+    m(S(0.075, 18, 12), skin, this.head, 0, 0.035, -0.035, 0.95, 0.85, 0.95);
+    m(S(0.11, 26, 14, 0, Math.PI * 2, 0, Math.PI * 0.58), black, this.head, 0, 0.115, 0.012, 0.95, 1.1, 1.04).rotation.x = 0.25;   // hair
+    const hband = m(new THREE.TorusGeometry(0.1, 0.009, 8, 28), red, this.head, 0, 0.158, 0.004); hband.rotation.x = Math.PI / 2;
     for (const sx of [-1, 1]) {
-      m(S(0.024, 8, 6), skin, this.head, sx * 0.112, 0.085, 0.0, 0.5, 1, 0.9);                   // ears
-      m(S(0.013, 6, 5), black, this.head, sx * 0.038, 0.115, -0.1);                              // eyes
-      m(new THREE.BoxGeometry(0.05, 0.01, 0.012), black, this.head, sx * 0.04, 0.14, -0.098).rotation.z = sx * 0.12;  // brows
-      m(new THREE.BoxGeometry(0.035, 0.12, 0.1), black, this.head, sx * 0.1, 0.07, -0.045);      // cheek pads
+      m(S(0.024, 8, 6), skin, this.head, sx * 0.098, 0.09, 0.0, 0.5, 1, 0.9);                    // ears
+      m(S(0.014, 8, 6), white, this.head, sx * 0.037, 0.115, -0.097);                           // eyes
+      m(S(0.008, 6, 5), black, this.head, sx * 0.037, 0.115, -0.108);
+      m(new THREE.BoxGeometry(0.05, 0.011, 0.01), black, this.head, sx * 0.037, 0.141, -0.098).rotation.z = sx * 0.15;   // brows
     }
-    m(S(0.125, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), black, this.head, 0, 0.12, 0.02);   // headgear shell
-    m(new THREE.BoxGeometry(0.2, 0.025, 0.02), red, this.head, 0, 0.2, -0.107).rotation.x = 0.35;   // headgear brow stripe
-    m(new THREE.BoxGeometry(0.1, 0.055, 0.05), black, this.head, 0, 0.0, -0.095);                // chin strap/bar
-    m(new THREE.BoxGeometry(0.055, 0.02, 0.016), white, this.head, 0, 0.025, -0.108);            // mouthguard
+    const nose = m(new THREE.ConeGeometry(0.019, 0.05, 8), skin, this.head, 0, 0.075, -0.112); nose.rotation.x = -Math.PI / 2;
+    m(S(0.017, 8, 6), skin, this.head, 0, 0.062, -0.12);
+    m(new THREE.BoxGeometry(0.05, 0.006, 0.008), M(0x6b3b2b), this.head, 0, 0.03, -0.106);      // mouth
 
     const arm = (side) => {
       const sg = side === 'L' ? -1 : 1;
@@ -185,11 +198,11 @@ class Fighter {
     const leg = (side) => {
       const sg = side === 'L' ? -1 : 1;
       const h = G(); h.position.set(sg * 0.11, -0.02, 0); this.pelvis.add(h);
-      m(S(0.105, 14, 10), skin, h, 0, 0, 0);                                                      // hip joint
+      m(S(0.145, 16, 12), shorts, h, 0, 0.0, 0);                                                  // hip covered by the trunks, so no bare thigh shows at any angle
       h.add(cyl(0.108, 0.078, 0.45, skin, -0.225, 14));
-      m(S(0.09), skin, h, 0, -0.14, -0.02, 1.05, 1.5, 1.1);                                       // quad
-      h.add(cyl(0.135, 0.12, 0.25, shorts, -0.125, 14));                                          // trunk leg
-      h.add(cyl(0.123, 0.123, 0.02, trim, -0.25, 14));                                            // hem stripe
+      m(S(0.09), skin, h, 0, -0.2, -0.02, 1.05, 1.5, 1.1);                                        // quad
+      h.add(cyl(0.15, 0.165, 0.38, shorts, -0.11, 18));                                           // flared trunk leg (reaches mid-thigh)
+      h.add(cyl(0.166, 0.166, 0.026, trim, -0.296, 18));                                          // hem stripe
       const k = G(); k.position.y = -0.45; h.add(k);
       m(S(0.075, 12, 10), skin, k, 0, 0, -0.01);                                                  // knee
       k.add(cyl(0.075, 0.053, 0.42, skin, -0.21, 14));
@@ -258,7 +271,9 @@ class Fighter {
 class Bot {
   constructor(THREE, scene, ring) {
     this.ring = ring; this.f = new Fighter(THREE); scene.add(this.f.root);
-    this.skill = 0.72; this.aggression = 1.0;
+    this.skill = 0.85; this.aggression = 1.0; this.playerStamina = 100; this.locked = false;
+    // set by the game: difficulty (skill / aggression / reaction) and training behaviour ('spar' | 'dummy' | 'guard' | 'drill')
+    this.baseAggr = 1; this.reactAdd = 0; this.mode = 'spar'; this.noDamage = false;
     this.onTelegraph = () => {}; this.onActive = () => {}; this.onKO = () => {}; this.onRevive = () => {};
     this.reset();
   }
@@ -268,6 +283,7 @@ class Bot {
     this.vx = 0; this.vz = 0; this.kbx = 0; this.kbz = 0;
     this.attack = null; this.queue = []; this.cool = 1.2; this.gap = 0; this.def = null; this.react = null;
     this.stun = 0; this.strafe = Math.random() < 0.5 ? 1 : -1; this.strafeT = 2; this.evadeT = 0; this.speed = 0;
+    this.stam = 100; this.locked = false; this._counter = null; this.hits = [];
     this.f.anim = null; this.f.base = STANCE; this.f.cur = STANCE.slice();
   }
   get dist() { return this.lastDist || 9; }
@@ -275,17 +291,34 @@ class Bot {
 
   // --- being attacked ---
   notice(type, side, level) {
-    if (this.ko || this.stun > 0 || (this.attack && this.f.u < 0.5)) return;
-    if (Math.random() > this.skill) return;
-    const r = Math.random(), mySide = side === 'L' ? 'R' : side === 'R' ? 'L' : 'L';
+    if (this.ko || this.locked || this.stun > 0 || (this.attack && this.f.u < 0.35)) return;
+    // reads the pattern: the more often the player repeats a strike, the more likely the bot is ready for it
+    this.seen = this.seen || []; this.seen.push(type); if (this.seen.length > 6) this.seen.shift();
+    const repeats = this.seen.filter(s => s === type).length - 1;
+    if (Math.random() > Math.min(0.97, this.skill + repeats * 0.04)) return;
+    const r = Math.random(), mySide = side === 'L' ? 'R' : side === 'R' ? 'L' : 'L', tired = this.stam < 20;
     let plan = null;
-    if (type === 'jab' || type === 'cross') plan = r < 0.4 ? { type: 'block' } : r < 0.62 ? { type: 'long' } : r < 0.85 ? { type: 'evade' } : null;
-    else if (type === 'hook') plan = r < 0.55 ? { type: 'block' } : r < 0.85 ? { type: 'evade' } : null;
-    else if (type === 'legkick') plan = r < 0.55 ? { type: 'check', level: 'low', side: mySide } : r < 0.8 ? { type: 'evade' } : null;
-    else if (type === 'midkick') plan = r < 0.5 ? { type: 'check', level: 'mid', side: mySide } : r < 0.7 ? { type: 'block' } : r < 0.88 ? { type: 'evade' } : null;
-    else if (type === 'highkick') plan = r < 0.5 ? { type: 'block' } : r < 0.65 ? { type: 'check', level: 'high', side: mySide } : r < 0.88 ? { type: 'evade' } : null;
-    else if (type === 'teep') plan = r < 0.35 ? { type: 'long' } : r < 0.6 ? { type: 'check', level: 'mid', side: 'L' } : r < 0.88 ? { type: 'evade' } : null;
-    if (plan) this.react = { at: this.t + 0.12 + Math.random() * 0.1 + (1 - this.skill) * 0.25, plan };
+    // matching answers: block hooks, long guard / block the straights, check the kick at its own height, lean out of high kicks
+    if (type === 'jab' || type === 'cross') plan = r < 0.45 ? { type: 'block' } : r < 0.75 ? { type: 'long' } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'hook') plan = r < 0.7 ? { type: 'block' } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'legkick') plan = r < 0.75 ? { type: 'check', level: 'low', side: mySide } : r < 0.92 ? { type: 'evade' } : null;
+    else if (type === 'midkick') plan = r < 0.62 ? { type: 'check', level: 'mid', side: mySide } : r < 0.82 ? { type: 'block' } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'highkick') plan = r < 0.6 ? { type: 'block' } : r < 0.8 ? { type: 'check', level: 'high', side: mySide } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'teep') plan = r < 0.45 ? { type: 'long' } : r < 0.8 ? { type: 'check', level: 'mid', side: 'L' } : r < 0.95 ? { type: 'evade' } : null;
+    if (plan) this.react = { at: this.t + 0.07 + Math.random() * 0.08 + (1 - this.skill) * 0.2 + this.reactAdd + (tired ? 0.08 : 0), plan };
+  }
+  // pick a counter-attack that fits what was just defended (or whiffed)
+  _counterFor(type, res) {
+    const r = Math.random();
+    if (res === 'checked') return { seq: r < 0.5 ? ['cross', 'legkick'] : ['jab', 'cross'] };
+    if (type === 'jab' || type === 'cross') return { seq: r < 0.4 ? ['cross', 'lhook'] : r < 0.7 ? ['lhookB', 'cross'] : ['jab', 'cross', 'legkick'] };
+    if (type === 'hook') return { seq: r < 0.5 ? ['cross', 'lhook'] : ['legkick'] };
+    if (type === 'teep') return { seq: r < 0.5 ? ['jab', 'cross'] : ['rteep'] };
+    if (type === 'plum') return { seq: ['jab', 'cross'] };
+    return { seq: r < 0.4 ? ['cross', 'lhook'] : r < 0.7 ? ['jab', 'midkick'] : ['jabB', 'cross'] };   // kicks leave the kicker off balance
+  }
+  _wantCounter(type, res) {
+    if (Math.random() < 0.8 * this.skill && this.stam > 12) { this._counter = this._counterFor(type, res); this._counterUntil = this.t + 1.2; this.cool = Math.min(this.cool, 0.05); }
   }
   _defend(plan) {
     if (this.attack) return;
@@ -296,7 +329,7 @@ class Bot {
   // atk: { type, side (attacker's limb), level, reach, dmg, dist }
   receive(atk) {
     if (this.ko) return 'miss';
-    if (atk.dist - this.f.cur[22] > atk.reach + 0.45) return 'miss';
+    if (atk.dist - this.f.cur[22] > atk.reach + 0.45) { if (!this.attack && !this.locked) this._wantCounter(atk.type, 'miss'); return 'miss'; }  // whiffed: punish it
     const mySide = atk.side === 'L' ? 'R' : atk.side === 'R' ? 'L' : 'C', d = this.def, type = atk.type;
     let res = 'hit';
     if (d) {
@@ -304,18 +337,27 @@ class Bot {
       else if (d.type === 'long' && (type === 'jab' || type === 'cross' || type === 'teep')) res = 'blocked';
       else if (d.type === 'check' && d.level === atk.level && (type === 'legkick' || type === 'midkick' || type === 'highkick' || type === 'teep' || type === 'knee')) res = 'checked';
       else if (d.type === 'evade' && Math.random() < 0.5) res = 'dodged';
-    } else if (PUNCH.has(type) && Math.random() < 0.18) res = 'blocked'; // guard held up in stance
+    } else if (PUNCH.has(type) && !this.attack && Math.random() < 0.32) res = 'blocked'; // guard held up in stance
     if (res === 'hit') this._hurt(atk, atk.dmg, 'flinch');
     else if (res === 'blocked') { this._hurt(atk, atk.dmg * 0.15, null); this.kbx += atk.dx * 0.8; this.kbz += atk.dz * 0.8; }
     else if (res === 'checked') { this.kbx += atk.dx * 0.5; this.kbz += atk.dz * 0.5; }
+    if (res !== 'hit' && !this.locked) {                       // a successful defence ends the guard early and opens a counter
+      if (this.def) this.def.until = Math.min(this.def.until, this.t + 0.12);
+      else this.def = { type: 'block', until: this.t + 0.12 };
+      this._wantCounter(type, res);
+    }
     return res;
   }
   _hurt(atk, dmg, anim) {
-    this.hp = Math.max(0, this.hp - dmg); this.f.flash = anim ? 1 : 0.4;
+    if (!this.noDamage) this.hp = Math.max(0, this.hp - dmg);
+    this.f.flash = anim ? 1 : 0.4;
     if (anim) {
       this.attack = null; this.queue.length = 0; this.def = null; this.react = null; this.f.base = STANCE;
       this.stun = 0.5; this.cool = 0.5 + Math.random() * 0.5; this.f.play(BFLINCH);
       this.kbx += atk.dx * 2.2; this.kbz += atk.dz * 2.2;
+      // taking repeated shots: cover up (turtle) instead of trading
+      this.hits.push(this.t); this.hits = this.hits.filter(h => this.t - h < 2.5);
+      if (this.hits.length >= 3 && !this.ko) { this.react = { at: this.t + 0.45, plan: { type: 'block' } }; this._counter = null; this.hits.length = 0; }
     }
     if (this.hp <= 0 && !this.ko) { this.ko = true; this.koT = 0; this.attack = null; this.queue.length = 0; this.def = null; this.f.base = STANCE; this.f.play(BKO); this.onKO(); }
   }
@@ -341,12 +383,36 @@ class Bot {
   }
   _launch(name, player) {
     const def = BMOVES[name]; this.attack = { name, def, fired: false }; this.f.play(def);
+    this.stam = Math.max(0, this.stam - (def.dmg * 1.4 + 2));
     this.f.base = STANCE; this.def = null;
     this.onTelegraph({ type: def.type, side: def.side, level: def.level, name });
   }
 
   update(dt, player) {
     const f = this.f, ring = this.ring; this.t += dt;
+    if (this.locked) {                                  // clinched: the game positions and poses the bot
+      f.update(dt, 0);
+      f.root.position.set(this.x, this.y, this.z);
+      f.root.rotation.set(0, this.facing, 0);
+      return;
+    }
+    // stamina: spent by attacks, comes back while it isn't swinging; a gassed player makes it greedier
+    this.stam = Math.min(100, this.stam + (this.attack ? 3 : 13) * dt);
+    this.aggression = this.baseAggr * (1 + (this.playerStamina < 25 ? 0.6 : 0)) * (this.stam < 25 ? 0.5 : 1) * (this.hp < 30 ? 0.8 : 1);
+    if (this.mode === 'drill') this.aggression = 0.4;
+    if (this.mode === 'dummy' || this.mode === 'guard') {   // training dummy: stands its ground, faces the player, never attacks
+      this.stun = Math.max(0, this.stun - dt); this.kbx = this.kbz = 0; this.attack = null; this.queue.length = 0; this.react = null; this._counter = null;
+      const tx = player.pos.x - this.x, tz = player.pos.z - this.z, want = Math.atan2(-tx, -tz);
+      let diff = want - this.facing; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); this.facing += Math.max(-4 * dt, Math.min(4 * dt, diff));
+      if (!f.playing && this.stun <= 0 && !this.ko) {
+        f.base = this.mode === 'guard' ? BHOLD.block : STANCE;
+        this.def = this.mode === 'guard' ? { type: 'block', until: 1e9 } : null;
+      }
+      f.update(dt, 0);
+      f.root.position.set(this.x, this.y, this.z);
+      f.root.rotation.set(f.root.userData.tilt || 0, this.facing + (f.root.userData.yawOffset || 0), 0);
+      return;
+    }
     const dx = player.pos.x - this.x, dz = player.pos.z - this.z, dist = Math.hypot(dx, dz); this.lastDist = dist;
     const engaged = this.inRing(player.pos.x, player.pos.z, 4) && !this.ko;
 
@@ -365,7 +431,7 @@ class Bot {
       this.stun = Math.max(0, this.stun - dt); this.cool -= dt; this.evadeT = Math.max(0, this.evadeT - dt);
       const nx = dist > 0.01 ? dx / dist : 0, nz = dist > 0.01 ? dz / dist : -1;
       if (this.react && this.t >= this.react.at) { this._defend(this.react.plan); this.react = null; }
-      if (this.def && this.t >= this.def.until) { this.def = null; f.base = STANCE; this.cool = Math.min(this.cool, 0.25 + Math.random() * 0.35); this._counter = Math.random() < 0.35; }
+      if (this.def && this.t >= this.def.until) { this.def = null; f.base = STANCE; this.cool = Math.min(this.cool, this._counter ? 0.05 : 0.25 + Math.random() * 0.35); }
 
       if (this.attack) {
         const a = this.attack;
@@ -386,16 +452,17 @@ class Bot {
           }
         } else if (engaged && this.cool <= 0) {
           let c = null;
-          if (this._counter && dist < 2.0) { c = { seq: Math.random() < 0.5 ? ['cross', 'lhook'] : ['midkick'] }; this._counter = false; }
-          else c = dist < 2.4 ? this._pickCombo(dist) : null;
+          if (this._counter) { const ct = this._counter; this._counter = null; if (this.t < this._counterUntil && dist <= BMOVES[ct.seq[0]].reach + 0.5) c = ct; }
+          if (!c) c = dist < 2.4 && this.stam > 8 ? this._pickCombo(dist) : null;
+          if (c && this.mode === 'drill') c = { seq: [c.seq[0]] };      // drill: one telegraphed strike at a time
           if (c) { this.queue = c.seq.slice(); this.gap = 0; }
           else this.cool = 0.15;
         }
         // neutral footwork (only while not mid-combo)
         if (!this.queue.length && engaged) {
           this.strafeT -= dt; if (this.strafeT <= 0) { this.strafe = -this.strafe; this.strafeT = 1.2 + Math.random() * 2; }
-          if (dist > 1.95) { mvx = nx * 2.6; mvz = nz * 2.6; }
-          else if (dist < 1.25) { mvx = -nx * 2.0; mvz = -nz * 2.0; }
+          if (dist > 1.95) { mvx = nx * BOT_SPEED; mvz = nz * BOT_SPEED; }
+          else if (dist < 1.25) { mvx = -nx * BOT_SPEED; mvz = -nz * BOT_SPEED; }
           else { mvx = -nz * this.strafe * 1.2; mvz = nx * this.strafe * 1.2; }
         } else if (!engaged) { // idle: drift back to the ring centre
           const cx = ring.cx - this.x, cz = ring.cz - 3 - this.z, cd = Math.hypot(cx, cz);

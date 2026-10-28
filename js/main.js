@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
 
   // ---------- settings ----------
-  const settings = { sens: 1.0, fov: 78, autoSprint: true };
+  const settings = { sens: 1.0, fov: 78, autoSprint: true, difficulty: 'normal', mode: 'spar', trainBot: 'dummy' };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('mtfps-settings') || '{}')); } catch (e) {}
   const saveSettings = () => { try { localStorage.setItem('mtfps-settings', JSON.stringify(settings)); } catch (e) {} };
 
@@ -43,21 +43,72 @@
   // ---------- sparring bot + simple hit resolution (placeholder for the real battle system) ----------
   const bot = new Bot(THREE, scene, MAP.RING);
   let hp = 100, shake = 0, hurtFlash = 0, teleT = 0;
+  let stamina = 100, stamDelay = 0, clinch = null, inRingPrev = false, gateMode = null;
+
+  // ---------- difficulty + training ----------
+  // skill = how often / how correctly the bot defends, aggr = attack tempo, react = extra reaction delay (s), dmg = damage it deals
+  const DIFF = {
+    easy: { label: 'EASY', skill: 0.55, aggr: 0.65, react: 0.16, dmg: 0.7 },
+    normal: { label: 'NORMAL', skill: 0.8, aggr: 1.0, react: 0.04, dmg: 1.0 },
+    hard: { label: 'HARD', skill: 0.92, aggr: 1.3, react: 0.0, dmg: 1.2 },
+    nak: { label: 'NAK MUAY', skill: 0.98, aggr: 1.6, react: -0.03, dmg: 1.4 },
+  };
+  const TRAIN_BOTS = { dummy: 'DUMMY', guard: 'GUARD', drill: 'DRILL' };
+  const training = () => settings.mode === 'train';
+  const LEVEL_NAME = { low: 'LEGS', mid: 'BODY', high: 'HEAD' };
+  const tr = { attempts: 0, hits: 0, combo: 0, best: 0, dmg: 0, lastT: -9, last: '—' };
+  function renderTrain() {
+    $('train').classList.toggle('hidden', !training());
+    if (!training()) return;
+    $('trBot').textContent = TRAIN_BOTS[settings.trainBot] + ' · ' + (DIFF[settings.difficulty] || DIFF.normal).label;
+    $('trStats').textContent = 'HITS ' + tr.hits + '/' + tr.attempts + (tr.attempts ? ' (' + Math.round(tr.hits / tr.attempts * 100) + '%)' : '') + ' · COMBO ' + tr.combo + ' (best ' + tr.best + ') · DMG ' + tr.dmg.toFixed(0);
+    $('trLast').textContent = 'LAST: ' + tr.last;
+  }
+  function trainReset() { Object.assign(tr, { attempts: 0, hits: 0, combo: 0, best: 0, dmg: 0, lastT: -9, last: '—' }); renderTrain(); }
+  function applyBotSettings() {
+    const d = DIFF[settings.difficulty] || DIFF.normal;
+    bot.skill = d.skill; bot.baseAggr = d.aggr; bot.reactAdd = d.react;
+    bot.mode = training() ? settings.trainBot : 'spar'; bot.noDamage = training();
+    for (const [id, v] of [['modeSel', settings.mode], ['diffSel', settings.difficulty], ['trainSel', settings.trainBot]]) { const el = $(id); if (el) el.value = v; }
+    renderTrain();
+  }
+  function resetFight() { hp = 100; stamina = 100; endClinch(); bot.reset(); trainReset(); }
+  function setMode(m) { settings.mode = m; saveSettings(); applyBotSettings(); resetFight(); toast(training() ? 'TRAINING MODE' : 'SPARRING MODE', 'hot'); }
+  function setDifficulty(k) { settings.difficulty = k; saveSettings(); applyBotSettings(); toast('DIFFICULTY · ' + DIFF[k].label, 'hot'); }
+  function setTrainBot(k) { settings.trainBot = k; saveSettings(); applyBotSettings(); if (training()) { bot.reset(); bot.mode = k; } toast('TRAINING BOT · ' + TRAIN_BOTS[k], 'hot'); }
+  const cycle = (obj, cur) => { const ks = Object.keys(obj); return ks[(ks.indexOf(cur) + 1) % ks.length]; };
+  function trainNote(name, A, res, dmg) {
+    tr.attempts++;
+    if (res === 'hit') {
+      tr.hits++; tr.dmg += dmg; tr.combo = time - tr.lastT < 2.5 ? tr.combo + 1 : 1; tr.best = Math.max(tr.best, tr.combo); tr.lastT = time;
+    } else tr.combo = 0;
+    tr.last = name.toUpperCase() + ' → ' + LEVEL_NAME[A.level] + ' · ' + res.toUpperCase() + (res === 'hit' ? ' ' + dmg.toFixed(1) : '');
+    renderTrain();
+  }
   const PATK = { jab: { level: 'high', dmg: 4 }, cross: { level: 'high', dmg: 7 }, hook: { level: 'high', dmg: 9 }, elbow: { level: 'high', dmg: 11 },
     legkick: { level: 'low', dmg: 8 }, midkick: { level: 'mid', dmg: 10 }, highkick: { level: 'high', dmg: 12 }, teep: { level: 'mid', dmg: 5 }, knee: { level: 'mid', dmg: 10 } };
   PATK.jabB = { type: 'jab', level: 'mid', dmg: 5 }; PATK.crossB = { type: 'cross', level: 'mid', dmg: 8 }; PATK.hookB = { type: 'hook', level: 'mid', dmg: 10 };
   const BOT_NAME = { jab: 'JAB', cross: 'CROSS', lhook: 'LEFT HOOK', rhook: 'RIGHT HOOK', legkick: 'LEG KICK', midkick: 'MID KICK', highkick: 'HIGH KICK', teep: 'TEEP', rteep: 'REAR TEEP',
-    jabB: 'BODY JAB', crossB: 'BODY CROSS', lhookB: 'BODY HOOK' };
+    jabB: 'BODY JAB', crossB: 'BODY CROSS', lhookB: 'BODY HOOK', plum: 'PLUM CLINCH' };
   const BOT_HINT = { jab: 'BLOCK / LONG GUARD', cross: 'BLOCK / LONG GUARD', lhook: 'BLOCK', rhook: 'BLOCK', legkick: 'CHECK LOW', midkick: 'CHECK MID / BLOCK', highkick: 'BLOCK / CHECK HIGH · or duck', teep: 'LONG GUARD / CHECK MID', rteep: 'LONG GUARD / CHECK MID',
-    jabB: 'BLOCK / LONG GUARD', crossB: 'BLOCK / LONG GUARD', lhookB: 'BLOCK' };
+    jabB: 'BLOCK / LONG GUARD', crossB: 'BLOCK / LONG GUARD', lhookB: 'BLOCK', plum: 'LONG GUARD · DUCK · BACK AWAY' };
 
   vm.onActive = (name, side, def) => {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-    if (MAP.hitBags(player.pos.x, player.pos.z, fx, fz, def.reach, def.impulse)) { toast('HIT · ' + name.toUpperCase(), 'hit'); }
+    const lvl = PATK[name], hitY = player.pos.y + { low: 0.55, mid: 1.2, high: 1.65 }[lvl ? lvl.level : 'mid'];   // where on the bag the strike lands
+    if (MAP.hitBags(player.pos.x, player.pos.z, fx, fz, def.reach, def.impulse, hitY)) { toast('HIT · ' + name.toUpperCase(), 'hit'); }
     const A = PATK[name]; if (!A) return;
     const bx = bot.x - player.pos.x, bz = bot.z - player.pos.z, d = Math.hypot(bx, bz);
-    if (d < 0.01 || (bx * fx + bz * fz) / d < 0.62) return; // bot not in front of the strike
-    const res = bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: A.dmg, dist: d, dx: bx / d, dz: bz / d });
+    const held = clinch && clinch.holder === 'player';           // inside our own plum every knee / elbow connects, harder
+    if (!held && (d < 0.01 || (bx * fx + bz * fz) / d < 0.62)) { // bot not in front of the strike: a whiff the bot may punish
+      bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: 0, dist: 99, dx: 0, dz: 0 });
+      if (training()) trainNote(name, A, 'miss', 0);
+      return;
+    }
+    const dmgScale = (0.65 + 0.35 * Math.min(1, stamina / 45)) * (held ? 1.4 : 1);   // tired strikes hurt less
+    const res = bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: A.dmg * dmgScale, dist: d, dx: bx / d, dz: bz / d });
+    if (held && res === 'hit') clinch.meter = Math.max(0, clinch.meter - 18);                   // damage wears down its escape
+    if (training()) trainNote(name, A, res, A.dmg * dmgScale);
     if (res === 'hit') toast('HIT · ' + name.toUpperCase(), 'hit');
     else if (res === 'blocked') toast('BLOCKED', 'hot');
     else if (res === 'checked') toast('CHECKED', 'hot');
@@ -75,6 +126,11 @@
     if (d - bot.f.cur[22] > a.reach + 0.3) return;
     if (a.level === 'low' && player.pos.y - bot.y > 0.5) { toast('JUMPED IT', 'hot'); return; }
     if (a.level === 'high' && (player.crouched || player.sliding)) { toast('DUCKED', 'hot'); return; }
+    if (a.type === 'plum') {                                      // the bot reaches for the plum
+      if (clinch) return;
+      if ((vm.holds.longGuard && Math.random() < 0.7) || !player.onGround) { toast('PLUM AVOIDED', 'hot'); return; }
+      startClinch('bot'); return;
+    }
     const mySide = a.side === 'L' ? 'R' : 'L', h = vm.holds;
     const punch = a.type === 'jab' || a.type === 'cross' || a.type === 'hook';
     const sideOk = a.type === 'jab' || a.type === 'cross';
@@ -83,14 +139,15 @@
     else if (h.block && (punch || a.type === 'highkick' || a.type === 'midkick') && (sideOk || h.block === mySide)) res = 'blocked';
     else if (h.check === a.level && (h.checkSide === mySide || a.type === 'teep') && a.type !== 'jab' && !punch) res = 'checked';
     if (res === 'checked') { toast('CHECKED', 'hot'); bot.stagger(); return; }
-    if (res === 'blocked') { toast('BLOCKED', 'hot'); hp -= a.dmg * 0.15; shake = Math.max(shake, 0.1); }
-    else { hp -= a.dmg; hurtFlash = 1; shake = Math.max(shake, 0.4); toast('-' + a.dmg + ' HP', 'hit'); if (player.onGround && d > 0.01) { player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; } }
-    if (hp <= 0) { toast('KO', 'hit'); hp = 100; bot.reset(); player.respawn(MAP.spawns[zoneIdx]); }
+    const dmg = Math.round(a.dmg * (DIFF[settings.difficulty] || DIFF.normal).dmg * 10) / 10;
+    if (res === 'blocked') { toast('BLOCKED', 'hot'); if (!training()) hp -= dmg * 0.15; shake = Math.max(shake, 0.1); }
+    else { toast(training() ? 'WOULD HIT · -' + dmg + ' HP' : '-' + dmg + ' HP', 'hit'); damagePlayer(dmg); if (player.onGround && d > 0.01) { player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; } }
   };
   bot.onKO = () => toast('BOT KO', 'hot');
 
   // Roundhouse opens with a 45-degree step: shove the body diagonally forward, away from the kicking side.
   vm.onStart = (name, side, def) => {
+    stamina = Math.max(0, stamina - (COST[name] || 8)); stamDelay = 0.7;
     const lvl = PATK[name];
     if (lvl && Math.hypot(bot.x - player.pos.x, bot.z - player.pos.z) < 5) bot.notice(name === 'knee' ? 'midkick' : name === 'elbow' ? 'hook' : lvl.type || name, side, lvl.level);
     if (!def.step || !player.onGround || player.mantle) return;
@@ -99,9 +156,10 @@
     player.vel.x += dx * def.step; player.vel.z += dz * def.step;
   };
   function goZone(i) {
-    zoneIdx = (i + MAP.spawns.length) % MAP.spawns.length; player.respawn(MAP.spawns[zoneIdx]); hp = 100; bot.reset();
+    endClinch(); zoneIdx = (i + MAP.spawns.length) % MAP.spawns.length; player.respawn(MAP.spawns[zoneIdx]); hp = 100; stamina = 100; bot.reset();
     peak = 0; $('zone').textContent = MAP.spawns[zoneIdx].name;
   }
+  applyBotSettings();
   goZone(0);
 
   // ---------- aiming: strike height follows where the crosshair points ----------
@@ -116,40 +174,197 @@
   const kickName = () => ({ low: 'legkick', mid: 'midkick', high: 'highkick' })[kickLevel()];
   const punchName = base => (aimHeight() < 1.15 ? base + 'B' : base);
 
-  // ---------- input ----------
+  // ---------- bindings (rebindable; keyboard codes plus mouse buttons as Mouse0..Mouse4) ----------
+  const A = (group, id, label, def) => ({ group, id, label, def });
+  const ACTIONS = [
+    A('Movement', 'fwd', 'Move forward', ['KeyW']), A('Movement', 'back', 'Move back', ['KeyS']),
+    A('Movement', 'left', 'Strafe left', ['KeyA']), A('Movement', 'right', 'Strafe right', ['KeyD']),
+    A('Movement', 'jump', 'Jump (hold to bhop)', ['Space']), A('Movement', 'crouch', 'Crouch / slide', ['KeyC', 'ControlLeft']),
+    A('Movement', 'walk', 'Walk (sprint if auto-sprint is off)', ['ShiftLeft']), A('Movement', 'autoSprint', 'Toggle auto-sprint', ['KeyT']),
+    A('Punches · aim low = body, level = head', 'jab', 'Jab (lead hand)', ['Mouse0']), A('Punches · aim low = body, level = head', 'cross', 'Cross (rear hand)', ['Mouse2']),
+    A('Punches · aim low = body, level = head', 'hookR', 'Right hook', ['KeyR', 'Mouse1']), A('Punches · aim low = body, level = head', 'hookL', 'Left hook', ['KeyE']),
+    A('Kicks · aim = target (legs / body / head)', 'kick', 'Roundhouse kick', ['Digit1']), A('Kicks · aim = target (legs / body / head)', 'sideMod', 'Hold: use LEFT leg / hand', ['KeyQ']),
+    A('Kicks · aim = target (legs / body / head)', 'teepL', 'Teep, lead leg', ['Digit2']), A('Kicks · aim = target (legs / body / head)', 'teepR', 'Teep, rear leg', ['Digit3']),
+    A('Kicks · aim = target (legs / body / head)', 'knee', 'Knee', ['Digit5']), A('Kicks · aim = target (legs / body / head)', 'elbow', 'Elbow', ['Digit6']),
+    A('Defence (hold)', 'checkLow', 'Check low', ['KeyZ']), A('Defence (hold)', 'checkMid', 'Check mid', ['KeyX']), A('Defence (hold)', 'checkHigh', 'Check high', ['KeyV']),
+    A('Defence (hold)', 'blockL', 'Block left', ['KeyF']), A('Defence (hold)', 'blockR', 'Block right', ['KeyB']), A('Defence (hold)', 'longGuard', 'Long guard', ['KeyH']),
+    A('Clinch', 'clinch', 'Plum clinch / release  (tap Jab + Cross fast to escape)', ['KeyG']),
+    A('Ring & training', 'interact', 'Enter / exit the ring (at the green corner)', ['KeyY']),
+    A('Ring & training', 'modeToggle', 'Toggle sparring / training mode', ['KeyM']), A('Ring & training', 'trainBot', 'Training bot: dummy / guard / drill', ['KeyU']),
+    A('Ring & training', 'difficulty', 'Cycle bot difficulty', ['KeyN']),
+    A('Other', 'respawn', 'Respawn / reset', ['Backspace']), A('Other', 'zoneNext', 'Next zone', ['BracketRight']), A('Other', 'zonePrev', 'Previous zone', ['BracketLeft']),
+    A('Other', 'help', 'Show / hide controls', ['F1', 'Tab']),
+  ];
+  const DEFAULT_BINDS = {}; for (const a of ACTIONS) DEFAULT_BINDS[a.id] = [a.def[0] || null, a.def[1] || null];
+  let binds = JSON.parse(JSON.stringify(DEFAULT_BINDS));
+  try {
+    const s = JSON.parse(localStorage.getItem('mtfps-binds') || '{}');
+    for (const id in s) if (binds[id] && Array.isArray(s[id])) binds[id] = [s[id][0] || null, s[id][1] || null];
+  } catch (e) {}
+  const saveBinds = () => { try { localStorage.setItem('mtfps-binds', JSON.stringify(binds)); } catch (e) {} };
+  const MOUSE_NAMES = { Mouse0: 'Left Click', Mouse1: 'Middle Click', Mouse2: 'Right Click', Mouse3: 'Mouse 4 (Back)', Mouse4: 'Mouse 5 (Forward)' };
+  const codeLabel = c => !c ? '—' : MOUSE_NAMES[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'L-Shift').replace('ShiftRight', 'R-Shift')
+    .replace('ControlLeft', 'L-Ctrl').replace('BracketLeft', '[').replace('BracketRight', ']').replace(/^Arrow/, 'Arrow ');
+  const bindLabel = id => binds[id].filter(Boolean).map(codeLabel).join(' / ') || 'unbound';
   const keys = {};
-  const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'KeyC', 'KeyQ', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6',
-    'KeyZ', 'KeyX', 'KeyV', 'KeyF', 'KeyG', 'KeyH', 'Backspace', 'BracketLeft', 'BracketRight', 'KeyT', 'F1', 'Tab']);
+  const isDown = id => binds[id].some(c => c && keys[c]);
+  const actionsFor = code => ACTIONS.filter(a => binds[a.id].includes(code)).map(a => a.id);
+  const isBound = code => code === 'F1' || code === 'Tab' || actionsFor(code).length > 0;
+
+  function renderHelp() {
+    let html = '', group = '';
+    for (const a of ACTIONS) {
+      if (a.group !== group) { group = a.group; html += '<h4>' + group + '</h4>'; }
+      html += '<div><span>' + a.label + '</span><span><kbd>' + bindLabel(a.id) + '</kbd></span></div>';
+    }
+    $('help').innerHTML = html;
+  }
+
+  // ---------- combat input: stamina, attacks, clinch ----------
+  const COST = { jab: 4, cross: 6, hook: 8, jabB: 5, crossB: 7, hookB: 9, legkick: 14, midkick: 14, highkick: 16, teep: 10, knee: 12, elbow: 10 };
+  function attack(name, sideMod) {
+    if (clinch) { if (clinch.holder === 'player' && (name === 'knee' || name === 'elbow') && stamina >= 4) vm.trigger(name, sideMod); return; }
+    if (stamina < 1) { toast('NO STAMINA', 'hot'); return; }
+    vm.trigger(name, sideMod);
+  }
+  function mash(id) {
+    if (!clinch || clinch.holder !== 'bot') return false;
+    clinch.meter += id === clinch.last ? 5 : 11; clinch.last = id; shake = Math.max(shake, 0.07);
+    return true;
+  }
+  function handle(id) {
+    switch (id) {
+      case 'jump': player.jumpBuf = 0.13; break;
+      case 'crouch': player.crouchEdge = 0.1; break;
+      case 'left': case 'right': player.tapEdge = 0.12; break;
+      case 'jab': if (!mash('jab')) attack(punchName('jab')); break;
+      case 'cross': if (!mash('cross')) attack(punchName('cross')); break;
+      case 'hookR': attack(punchName('hook'), isDown('sideMod')); break;
+      case 'hookL': attack(punchName('hook'), true); break;
+      case 'kick': attack(kickName(), isDown('sideMod')); break;
+      case 'teepL': attack('teep', true); break;
+      case 'teepR': attack('teep', false); break;
+      case 'knee': attack('knee', isDown('sideMod')); break;
+      case 'elbow': attack('elbow', isDown('sideMod')); break;
+      case 'checkLow': case 'checkMid': case 'checkHigh': vm.setHolds({ checkSide: isDown('sideMod') ? 'L' : 'R' }); break;
+      case 'clinch': toggleClinch(); break;
+      case 'interact': useGate(); break;
+      case 'modeToggle': setMode(training() ? 'spar' : 'train'); break;
+      case 'trainBot': setTrainBot(cycle(TRAIN_BOTS, settings.trainBot)); break;
+      case 'difficulty': setDifficulty(cycle(DIFF, settings.difficulty)); break;
+      case 'respawn': goZone(zoneIdx); break;
+      case 'zoneNext': goZone(zoneIdx + 1); break;
+      case 'zonePrev': goZone(zoneIdx - 1); break;
+      case 'autoSprint': settings.autoSprint = !settings.autoSprint; $('auto').checked = settings.autoSprint; saveSettings(); toast('AUTO-SPRINT ' + (settings.autoSprint ? 'ON' : 'OFF')); break;
+      case 'help': $('help').classList.toggle('hidden'); break;
+    }
+  }
+
+  // Ring entrance: stand near the green corner; inside the ring you get "exit", outside you get "enter".
+  function useGate() {
+    if (!gateMode || clinch) return;
+    const G = MAP.GATE, R = MAP.RING;
+    if (gateMode === 'exit') { player.pos.x = G.x + 1.7; player.pos.z = G.z + 1.7; player.pos.y = 0; toast('LEFT THE RING'); }
+    else { player.pos.x = G.x - 1.4; player.pos.z = G.z - 1.4; player.pos.y = R.y; player.yaw = Math.PI / 4; toast('ENTERED THE RING'); }
+    player.vel.x = player.vel.y = player.vel.z = 0; player.onGround = true; Object.assign(player.prev, player.pos);
+  }
+
+  // Plum clinch. holder 'player': we have the bot's head (knee / elbow for bonus damage, bot struggles free over time).
+  // holder 'bot': the bot has us; tap jab + cross (alternating is worth more) to fill the escape bar before it knees us up.
+  function toggleClinch() {
+    if (clinch) { if (clinch.holder === 'player') endClinch('release'); return; }
+    const dx = bot.x - player.pos.x, dz = bot.z - player.pos.z, d = Math.hypot(dx, dz);
+    const front = d > 0.01 && (dx * -Math.sin(player.yaw) + dz * -Math.cos(player.yaw)) / d > 0.55;
+    if (bot.ko || !front || d > 1.8 || !player.onGround) { toast('NO CLINCH RANGE', 'hot'); return; }
+    if (stamina < 12) { toast('NO STAMINA', 'hot'); return; }
+    stamina -= 12; stamDelay = 0.8;
+    if ((bot.attack && bot.f.u < 0.7) || (bot.def && bot.def.type === 'evade')) { toast('CLINCH FAILED', 'hot'); return; }
+    startClinch('player');
+  }
+  function startClinch(holder) {
+    if (clinch) return;
+    const dx = bot.x - player.pos.x, dz = bot.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
+    clinch = { holder, t: 0, meter: 0, last: null, dirx: dx / d, dirz: dz / d, nextKnee: 1.0, kneeAt: null };
+    player.vel.x = player.vel.z = 0;
+    bot.locked = true; bot.attack = null; bot.queue.length = 0; bot.def = null; bot.react = null; bot._counter = null; bot.f.anim = null;
+    vm.setHolds({ clinch: holder === 'player' ? 'hold' : 'held' });
+    $('clinch').classList.remove('hidden');
+    toast(holder === 'player' ? 'PLUM CLINCH' : 'BOT HAS THE PLUM — TAP ' + codeLabel(binds.jab[0]).toUpperCase() + ' + ' + codeLabel(binds.cross[0]).toUpperCase(), 'hot');
+  }
+  function endClinch(why) {
+    if (!clinch) return;
+    clinch = null; vm.setHolds({ clinch: null });
+    bot.locked = false; bot.f.base = STANCE; bot.f.anim = null; $('clinch').classList.add('hidden');
+    const dx = bot.x - player.pos.x, dz = bot.z - player.pos.z, d = Math.hypot(dx, dz) || 1, nx = dx / d, nz = dz / d;
+    bot.cool = 1.0; bot._counter = null;
+    if (why === 'escaped') { toast('ESCAPED!', 'hot'); bot.kbx += nx * 4; bot.kbz += nz * 4; bot.stagger(); player.vel.x -= nx * 2; player.vel.z -= nz * 2; stamina = Math.max(0, stamina - 8); }
+    else if (why === 'bot-released') { toast('BOT RELEASED', 'hot'); bot.kbx += nx * 1.5; bot.kbz += nz * 1.5; player.vel.x -= nx * 4; player.vel.z -= nz * 4; }
+    else if (why === 'broke') { toast('BOT BROKE FREE', 'hot'); bot.kbx += nx * 3.5; bot.kbz += nz * 3.5; bot.cool = 0.5; }
+    else if (why === 'release') { toast('RELEASED'); bot.kbx += nx * 3; bot.kbz += nz * 3; }
+    else if (why === 'exhausted') { toast('OUT OF STAMINA', 'hot'); bot.kbx += nx * 3; bot.kbz += nz * 3; }
+  }
+  function updateClinch(dt) {
+    const c = clinch; c.t += dt;
+    if (bot.ko) { endClinch('release'); return; }
+    // hold the bot at arm's length in front of the player, both facing each other
+    const R = MAP.RING;
+    bot.x = Math.max(R.cx - R.hx + 0.4, Math.min(R.cx + R.hx - 0.4, player.pos.x + c.dirx * 0.82));
+    bot.z = Math.max(R.cz - R.hz + 0.4, Math.min(R.cz + R.hz - 0.4, player.pos.z + c.dirz * 0.82));
+    const bx = player.pos.x - bot.x, bz = player.pos.z - bot.z;
+    bot.facing = Math.atan2(-bx, -bz);
+    const want = Math.atan2(bot.x - player.pos.x, bot.z - player.pos.z) + Math.PI;   // yaw that looks at the bot
+    let dyaw = want - player.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw)); player.yaw += dyaw * Math.min(1, dt * 7);
+    bot.f.base = c.holder === 'player' ? BCL.held : BCL.hold;
+    const label = $('clinchLabel'), fill = $('clinchFill');
+    if (c.holder === 'player') {
+      stamina = Math.max(0, stamina - 6 * dt); stamDelay = 0.6;
+      c.meter += dt * (17 + bot.skill * 6);
+      label.textContent = 'PLUM · BOT STRUGGLING  (knee / elbow to wear it down · ' + codeLabel(binds.clinch[0]) + ' to release)'; fill.style.background = '#ff7a2e';
+      if (stamina <= 0) endClinch('exhausted'); else if (c.meter >= 100) endClinch('broke');
+    } else {
+      c.meter = Math.max(0, c.meter - 18 * dt);
+      c.nextKnee -= dt;
+      if (c.nextKnee <= 0) { c.nextKnee = 1.2; c.kneeAt = c.t + 0.4; bot.f.play(BCL.knee); }
+      if (c.kneeAt && c.t >= c.kneeAt) { c.kneeAt = null; toast('-7 HP · KNEE', 'hit'); damagePlayer(7); c.meter *= 0.8; }
+      label.textContent = 'ESCAPE: TAP ' + codeLabel(binds.jab[0]).toUpperCase() + ' + ' + codeLabel(binds.cross[0]).toUpperCase() + ' FAST'; fill.style.background = '#6fd3ff';
+      if (clinch && c.meter >= 100) endClinch('escaped'); else if (clinch && c.t > 6) endClinch('bot-released');
+    }
+    if (clinch) fill.style.width = Math.min(100, c.meter) + '%';
+  }
+  function damagePlayer(n) {
+    hurtFlash = training() ? 0.35 : 1; shake = Math.max(shake, 0.4);
+    if (training()) return;                                       // training: hits show up but never hurt
+    hp -= n;
+    if (hp <= 0) { toast('KO', 'hit'); hp = 100; stamina = 100; endClinch(); bot.reset(); player.respawn(MAP.spawns[zoneIdx]); }
+  }
+
+  // ---------- input events ----------
+  let rebinding = null, rebindEnd = 0;
+  function press(code) { for (const id of actionsFor(code)) handle(id); }
+  function setBind(code) {
+    const { id, slot } = rebinding; rebinding = null; rebindEnd = performance.now();
+    for (const k in binds) for (let i = 0; i < 2; i++) if (binds[k][i] === code && !(k === id && i === slot)) binds[k][i] = null;   // one code, one action
+    binds[id][slot] = code; saveBinds(); renderBinds(); renderHelp();
+  }
   addEventListener('keydown', e => {
-    if (GAME_KEYS.has(e.code)) e.preventDefault();
+    if (rebinding) { e.preventDefault(); if (e.code === 'Escape') { rebinding = null; rebindEnd = performance.now(); renderBinds(); } else setBind(e.code); return; }
+    if (isBound(e.code)) e.preventDefault();
     if (e.repeat) return;
     keys[e.code] = true;
-    if (!locked) return;
-    const c = e.code;
-    if (c === 'Space') player.jumpBuf = 0.13;
-    if (c === 'KeyC' || c === 'ControlLeft') player.crouchEdge = 0.1;
-    if (c === 'KeyA' || c === 'KeyD') player.tapEdge = 0.12;
-    if (c === 'KeyR') vm.trigger(punchName('hook'), keys.KeyQ);          // right hook (Q held = left)
-    if (c === 'KeyE') vm.trigger(punchName('hook'), true);               // left hook
-    if (c === 'Digit1') vm.trigger(kickName(), keys.KeyQ);               // roundhouse: height follows where you look
-    if (c === 'Digit2') vm.trigger('teep', true);                        // lead-leg teep
-    if (c === 'Digit3') vm.trigger('teep', false);                       // rear-leg teep
-    if (c === 'Digit5') vm.trigger('knee', keys.KeyQ);
-    if (c === 'Digit6') vm.trigger('elbow', keys.KeyQ);
-    if (c === 'KeyZ' || c === 'KeyX' || c === 'KeyV') vm.setHolds({ checkSide: keys.KeyQ ? 'L' : 'R' });
-    if (c === 'Backspace') goZone(zoneIdx);
-    if (c === 'BracketRight') goZone(zoneIdx + 1);
-    if (c === 'BracketLeft') goZone(zoneIdx - 1);
-    if (c === 'KeyT') { settings.autoSprint = !settings.autoSprint; saveSettings(); toast('AUTO-SPRINT ' + (settings.autoSprint ? 'ON' : 'OFF')); }
-    if (c === 'F1' || c === 'Tab') $('help').classList.toggle('hidden');
+    if (locked) press(e.code);
   });
   addEventListener('keyup', e => { keys[e.code] = false; });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
   addEventListener('contextmenu', e => e.preventDefault());
   addEventListener('mousedown', e => {
+    const code = 'Mouse' + e.button;
+    if (rebinding) { e.preventDefault(); setBind(code); return; }
+    if (e.button >= 1) e.preventDefault();
     if (!locked) return;
-    if (e.button === 0) vm.trigger(punchName('jab')); else if (e.button === 2) vm.trigger(punchName('cross')); else if (e.button === 1) { e.preventDefault(); vm.trigger(punchName('hook'), keys.KeyQ); }
+    keys[code] = true; press(code);
   });
+  addEventListener('mouseup', e => { const code = 'Mouse' + e.button; keys[code] = false; if (e.button >= 3) e.preventDefault(); });
+  addEventListener('auxclick', e => { if (e.button >= 1) e.preventDefault(); });
   addEventListener('mousemove', e => {
     if (!locked) return;
     const s = 0.0022 * settings.sens;
@@ -157,13 +372,17 @@
   });
 
   const canvas = $('c'), overlay = $('overlay');
-  overlay.addEventListener('click', e => { if (e.target.closest('.settings')) return; canvas.requestPointerLock && canvas.requestPointerLock(); });
+  overlay.addEventListener('click', e => {
+    if (e.target.closest('.settings, #binds') || rebinding || performance.now() - rebindEnd < 400) return;
+    canvas.requestPointerLock && canvas.requestPointerLock();
+  });
   canvas.addEventListener('click', () => { if (!locked) canvas.requestPointerLock(); });
   document.addEventListener('pointerlockchange', () => {
     locked = document.pointerLockElement === canvas; overlay.classList.toggle('hidden', locked);
     if (!locked) for (const k in keys) keys[k] = false;
   });
-  // settings UI
+
+  // settings UI: sliders + rebindable controls
   const sens = $('sens'), fov = $('fov'), auto = $('auto');
   sens.value = settings.sens; fov.value = settings.fov; auto.checked = settings.autoSprint;
   const syncLabels = () => { $('sensv').textContent = (+sens.value).toFixed(2); $('fovv').textContent = fov.value; };
@@ -171,18 +390,43 @@
   sens.oninput = () => { settings.sens = +sens.value; syncLabels(); saveSettings(); };
   fov.oninput = () => { settings.fov = +fov.value; syncLabels(); saveSettings(); };
   auto.onchange = () => { settings.autoSprint = auto.checked; saveSettings(); };
+  $('modeSel').onchange = e => setMode(e.target.value);
+  $('diffSel').onchange = e => setDifficulty(e.target.value);
+  $('trainSel').onchange = e => setTrainBot(e.target.value);
+  applyBotSettings();
+
+  function renderBinds() {
+    const box = $('binds'); box.innerHTML = ''; let group = '';
+    const note = document.createElement('div'); note.style.cssText = 'grid-column:1/-1;font-size:11px'; note.textContent = 'Click a slot, then press a key or mouse button (side buttons work). Right-click a slot to clear it. Esc cancels.'; box.appendChild(note);
+    for (const a of ACTIONS) {
+      if (a.group !== group) { group = a.group; const h = document.createElement('div'); h.style.cssText = 'grid-column:1/-1;color:var(--acc);letter-spacing:.12em;font-size:11px;margin-top:6px;text-transform:uppercase'; h.textContent = group; box.appendChild(h); }
+      const l = document.createElement('div'); l.textContent = a.label; box.appendChild(l);
+      for (let slot = 0; slot < 2; slot++) {
+        const b = document.createElement('button');
+        const waiting = rebinding && rebinding.id === a.id && rebinding.slot === slot;
+        b.textContent = waiting ? 'press a key…' : codeLabel(binds[a.id][slot]); if (waiting) b.className = 'wait';
+        b.onclick = ev => { ev.stopPropagation(); rebinding = { id: a.id, slot }; renderBinds(); };
+        b.oncontextmenu = ev => { ev.preventDefault(); binds[a.id][slot] = null; saveBinds(); renderBinds(); renderHelp(); };
+        box.appendChild(b);
+      }
+    }
+  }
+  $('bindToggle').onclick = () => { const open = $('binds').classList.toggle('hidden'); $('bindReset').classList.toggle('hidden', open); if (!open) renderBinds(); };
+  $('bindReset').onclick = () => { binds = JSON.parse(JSON.stringify(DEFAULT_BINDS)); saveBinds(); renderBinds(); renderHelp(); };
+  renderHelp();
 
   function readInput() {
     const I = player.input;
-    I.fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0); I.side = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-    I.jump = !!keys.Space; I.crouch = !!(keys.KeyC || keys.ControlLeft);
-    const shift = !!(keys.ShiftLeft || keys.ShiftRight);
+    I.fwd = (isDown('fwd') ? 1 : 0) - (isDown('back') ? 1 : 0); I.side = (isDown('right') ? 1 : 0) - (isDown('left') ? 1 : 0);
+    I.jump = isDown('jump'); I.crouch = isDown('crouch');
+    const shift = isDown('walk');
     I.sprint = settings.autoSprint ? !shift : shift;
     // combat holds
     vm.setHolds({
-      block: keys.KeyF ? 'L' : keys.KeyG ? 'R' : null, longGuard: !!keys.KeyH,
-      check: keys.KeyZ ? 'low' : keys.KeyX ? 'mid' : keys.KeyV ? 'high' : null,
+      block: isDown('blockL') ? 'L' : isDown('blockR') ? 'R' : null, longGuard: isDown('longGuard'),
+      check: isDown('checkLow') ? 'low' : isDown('checkMid') ? 'mid' : isDown('checkHigh') ? 'high' : null,
     });
+    if (clinch) { I.fwd = I.side = 0; I.jump = false; }
   }
 
   // ---------- loop ----------
@@ -191,7 +435,7 @@
 
   // the bot is a solid cylinder: shove the player out of it
   function pushOutOfBot() {
-    if (bot.ko) return;
+    if (bot.ko || clinch) return;
     const dx = player.pos.x - bot.x, dz = player.pos.z - bot.z, d = Math.hypot(dx, dz), min = 0.85;
     if (d < min && d > 0.001 && player.pos.y < bot.y + 1.5) { const o = (min - d) / d; player.pos.x += dx * o; player.pos.z += dz * o; }
   }
@@ -202,6 +446,20 @@
     frames++; fpsT += dt; if (fpsT > 0.5) { hud.fps.textContent = Math.round(frames / fpsT) + ' fps'; frames = 0; fpsT = 0; }
     if (locked) {
       readInput();
+      // ring rules: inside the ropes nobody out-runs the bot; clinched = rooted
+      const R = MAP.RING, inRing = Math.abs(player.pos.x - R.cx) < R.hx + 0.6 && Math.abs(player.pos.z - R.cz) < R.hz + 0.6 && player.pos.y < R.y + 0.9;
+      player.speedCap = clinch ? 0 : inRing ? BOT_SPEED : null;
+      if (inRing !== inRingPrev) { inRingPrev = inRing; if (inRing) toast('RING · SPEED MATCHED TO BOT'); }
+      // stamina comes back after a short pause (slower while guarding)
+      stamDelay = Math.max(0, stamDelay - dt);
+      if (!clinch && stamDelay <= 0) stamina = Math.min(100, stamina + (vm.holds.block || vm.holds.longGuard || vm.holds.check ? 10 : 20) * dt);
+      bot.playerStamina = stamina;
+      if (training()) stamina = 100;                                   // training: unlimited stamina
+      // ring entrance prompt
+      const G = MAP.GATE, insideRing = Math.abs(player.pos.x - R.cx) < R.hx && Math.abs(player.pos.z - R.cz) < R.hz && player.pos.y < R.y + 0.9;
+      gateMode = !clinch && Math.hypot(player.pos.x - G.x, player.pos.z - G.z) < 4.2 ? (insideRing ? 'exit' : 'enter') : null;
+      $('prompt').textContent = gateMode ? '[' + bindLabel('interact') + ']  ' + (gateMode === 'exit' ? 'EXIT RING' : 'ENTER RING') : '';
+      if (clinch) updateClinch(dt);
       acc += dt;
       while (acc >= DT) { player.step(DT); acc -= DT; MAP.update(DT, player); pushOutOfBot(); }
       bot.update(dt, player);
@@ -251,10 +509,12 @@
     hud.act.textContent = vm.label;
     hud.act.style.opacity = vm.label ? 1 : 0;
     $('hpYou').style.width = Math.max(0, hp) + '%'; $('hpBot').style.width = Math.max(0, bot.hp) + '%';
+    $('stYou').style.width = stamina + '%'; $('stYou').classList.toggle('low', stamina < 20);
+    $('stBot').style.width = bot.stam + '%'; $('stBot').classList.toggle('low', bot.stam < 20);
     hurtFlash = Math.max(0, hurtFlash - dt * 2.5); $('hurt').style.opacity = hurtFlash * 0.55;
     teleT -= dt; $('telegraph').style.opacity = teleT > 0 ? Math.min(1, teleT * 3) : 0;
   }
   requestAnimationFrame(frame);
 
-  window.game = { player, vm, MAP, bot, settings, goZone, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
+  window.game = { player, vm, MAP, bot, settings, goZone, setMode, setDifficulty, setTrainBot, useGate, gate: () => gateMode, tr, startClinch, endClinch, toggleClinch, handle, binds: () => binds, state: () => ({ hp, stamina, clinch }), setStamina: v => { stamina = v; }, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
 })();

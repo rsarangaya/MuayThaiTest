@@ -12,6 +12,8 @@ const MAP = (function () {
   const HALF = FULL ? 90 : 46;
   const RING = FULL ? { cx: -66, cz: -62, hx: 7.5, hz: 7.5, y: 0.3 } : { cx: 0, cz: -34, hx: 7.5, hz: 7.5, y: 0.3 }; // fighting area (bot stays inside)
 
+  const GATE = { x: RING.cx + RING.hx, z: RING.cz + RING.hz };   // the ring's entrance / exit corner (south-east)
+
   const C = { floor: 0x394150, wall: 0x2b3140, ledge: 0xe8833a, tall: 0x3fa7a0, ramp: 0x6a7fd1, pillar: 0x8b93a7, slab: 0xc9505a, tower: 0x7a5fb0 };
 
   function box(cx, cz, w, d, y0, y1, color, label) {
@@ -29,12 +31,18 @@ const MAP = (function () {
     box(-HALF - 1, 0, 2, 2 * HALF, 0, 24, C.wall);
     box(HALF + 1, 0, 2, 2 * HALF, 0, 24, C.wall);
 
-    spawns.push({ name: 'Spawn plaza', x: 0, z: 0, yaw: 0 });
+    if (FULL) spawns.push({ name: 'Spawn plaza', x: 0, z: 0, yaw: 0 });
+    // you start just outside the ring's entrance corner, facing the ring
+    else spawns.push({ name: 'Ring entrance', x: GATE.x + 2.6, z: GATE.z + 2.6, yaw: Math.PI / 4 });
 
     if (FULL) courseLayout();
     ringLayout();
     // --- Heavy bags (combat sandbox) ---
-    [-6, -2, 2, 6].forEach(x => bags.push({ x, z: -9, ax: 0, az: 0, vx: 0, vz: 0, flash: 0 }));
+    [-6, -2, 2, 6].forEach(x => bags.push({ x, z: -9, ax: 0, az: 0, vx: 0, vz: 0, flash: 0, dent: 0, dv: 0, dy: 0, dirx: 0, dirz: 1 }));
+    // overhead beam on two posts that the long bags hang from
+    decor.push({ x0: -8, x1: 8, z0: -9.1, z1: -8.9, y0: 3.2, y1: 3.32, color: 0x5b616d });
+    for (const px of [-8, 8]) decor.push({ x0: px - 0.07, x1: px + 0.07, z0: -9.07, z1: -8.93, y0: 0, y1: 3.32, color: 0x5b616d });
+    if (!FULL) spawns.push({ name: 'Long bags', x: 0, z: -2, yaw: 0 });
   }
 
   function courseLayout() {
@@ -89,7 +97,11 @@ const MAP = (function () {
   function ringLayout() {
     // --- Sparring ring (bot lives here). Platform is solid; ropes are solid up to the top rope. ---
     box(RING.cx, RING.cz, 2 * RING.hx + 1, 2 * RING.hz + 1, 0, RING.y, 0x3a4256);
-    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) decor.push({ x0: RING.cx + sx * RING.hx - 0.12, x1: RING.cx + sx * RING.hx + 0.12, z0: RING.cz + sz * RING.hz - 0.12, z1: RING.cz + sz * RING.hz + 0.12, y0: RING.y, y1: RING.y + 1.7, color: 0xdddddd });
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) decor.push({ x0: RING.cx + sx * RING.hx - 0.12, x1: RING.cx + sx * RING.hx + 0.12, z0: RING.cz + sz * RING.hz - 0.12, z1: RING.cz + sz * RING.hz + 0.12, y0: RING.y, y1: RING.y + 1.7, color: sx === 1 && sz === 1 ? 0x2fbf6a : 0xdddddd });
+    // entrance corner: green post plus floor pads inside and outside, with a sign
+    decor.push({ x0: GATE.x - 2.1, x1: GATE.x - 0.3, z0: GATE.z - 2.1, z1: GATE.z - 0.3, y0: RING.y, y1: RING.y + 0.02, color: 0x2fbf6a });
+    decor.push({ x0: GATE.x + 0.5, x1: GATE.x + 2.3, z0: GATE.z + 0.5, z1: GATE.z + 2.3, y0: 0, y1: 0.02, color: 0x2fbf6a });
+    labels.push({ x: GATE.x, y: RING.y + 2.5, z: GATE.z, text: 'ENTER / EXIT' });
     // Ropes: invisible thin barriers up to the top rope. They block walking but can be jumped over (not stood
     // on or mantled, see player.js). The ring is fully enclosed.
     const WT = 0.12, WH = 1.45;
@@ -107,7 +119,7 @@ const MAP = (function () {
       ropes.push({ ax: x1, az: z0, bx: x1, bz: z1, ox: 1, oz: 0, y, color: c });
       ropes.push({ ax: x0, az: z1, bx: x1, bz: z1, ox: 0, oz: 1, y, color: c });
     }
-    spawns.push({ name: 'Sparring ring', x: RING.cx, z: RING.cz + RING.hz - 1.5, yaw: 0 });
+    spawns.push({ name: 'Inside the ring', x: GATE.x - 1.3, z: GATE.z - 1.3, y: RING.y, yaw: Math.PI / 4 });
   }
 
   // ---------- geometry queries (used by physics) ----------
@@ -220,13 +232,23 @@ const MAP = (function () {
 
     // heavy bags
     for (const b of bags) {
-      const pivot = new THREE.Group(); pivot.position.set(b.x, 3.6, b.z);
-      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), new THREE.MeshLambertMaterial({ color: 0x888888 }));
-      chain.position.y = -0.4;
-      b.mat = new THREE.MeshLambertMaterial({ color: 0xb23a2e, emissive: 0x000000 });
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 1.6, 16), b.mat);
-      body.position.y = -1.6;
-      pivot.add(chain, body); scene.add(pivot); b.pivot = pivot;
+      // Long (banana) bag: ~2.1 m, slightly tapered, rounded ends, taped bands, hanging on a chain to just above the floor
+      const pivot = new THREE.Group(); pivot.position.set(b.x, 3.2, b.z);
+      const steel = new THREE.MeshLambertMaterial({ color: 0x8a8f99 }), tape = new THREE.MeshLambertMaterial({ color: 0x16181d }), trimM = new THREE.MeshLambertMaterial({ color: 0xe8c23a });
+      const CH = 0.9, BL = 2.1, BR = 0.2;
+      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, CH, 6), steel); chain.position.y = -CH / 2;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.014, 6, 14), steel); ring.position.y = -CH; ring.rotation.x = Math.PI / 2;
+      b.mat = new THREE.MeshLambertMaterial({ color: 0xa8322a, emissive: 0x000000 });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(BR * 0.9, BR, BL, 22, 28), b.mat); body.position.y = -CH - BL / 2;
+      b.body = body; b.orig = body.geometry.attributes.position.array.slice();       // kept so the dent can be rebuilt from the undeformed shape each frame
+      const capT = new THREE.Mesh(new THREE.SphereGeometry(BR * 0.9, 18, 10), b.mat); capT.scale.y = 0.45; capT.position.y = -CH;
+      const capB = new THREE.Mesh(new THREE.SphereGeometry(BR, 18, 10), b.mat); capB.scale.y = 0.5; capB.position.y = -CH - BL;
+      pivot.add(chain, ring, body, capT, capB);
+      for (const [f, m] of [[0.08, tape], [0.3, trimM], [0.5, tape], [0.7, trimM], [0.92, tape]]) {   // straps / tape bands
+        const r = BR * (0.9 + 0.1 * f) + 0.008, band = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.045, 22), m);
+        band.position.y = -CH - BL * f; pivot.add(band);
+      }
+      scene.add(pivot); b.pivot = pivot;
     }
   }
 
@@ -262,34 +284,59 @@ const MAP = (function () {
     }
   }
 
+  // push the vertices facing the strike inward (away from the player) around the impact height
+  function dentBag(b) {
+    b.dirty = false;
+    const pos = b.body.geometry.attributes.position, o = b.orig, cy = b.dy - b.body.position.y;   // impact height in the body's own space
+    for (let i = 0; i < pos.count; i++) {
+      const x = o[i * 3], y = o[i * 3 + 1], z = o[i * 3 + 2], r = Math.hypot(x, z) || 1;
+      const facing = Math.max(0, -(x / r * b.dirx + z / r * b.dirz)), g = Math.exp(-Math.pow((y - cy) / 0.3, 2));
+      const d = b.dent * g * facing * (r > 0.05 ? 1 : 0);
+      pos.setXYZ(i, x + b.dirx * d, y, z + b.dirz * d);
+    }
+    pos.needsUpdate = true; b.body.geometry.computeVertexNormals();
+  }
+
   function update(dt, pl) {
     updateRopes(dt, pl);
     for (const b of bags) {
-      b.vx += (-26 * b.ax - 0.9 * b.vx) * dt; b.vz += (-26 * b.az - 0.9 * b.vz) * dt;
+      // long bag = slow pendulum (~2 s period) with moderate damping, settles in about 4 s
+      b.vx += (-10 * b.ax - 1.5 * b.vx) * dt; b.vz += (-10 * b.az - 1.5 * b.vz) * dt;
       b.ax += b.vx * dt; b.az += b.vz * dt;
       b.flash = Math.max(0, b.flash - dt * 4);
+      // impact dent: a local spring that caves the surface the strike hit, then rebounds
+      if (b.dent !== 0 || b.dv !== 0) {
+        b.dv += (-220 * b.dent - 12 * b.dv) * dt; b.dent = Math.max(-0.03, Math.min(0.12, b.dent + b.dv * dt));
+        if (Math.abs(b.dent) < 0.0008 && Math.abs(b.dv) < 0.01) { b.dent = 0; b.dv = 0; b.dirty = true; }
+        else b.dirty = true;
+      }
       if (b.pivot) {
         b.pivot.rotation.x = b.ax; b.pivot.rotation.z = b.az;
         b.mat.emissive.setRGB(b.flash * 0.6, b.flash * 0.45, b.flash * 0.1);
+        if (b.dirty && b.body) dentBag(b);
       }
     }
   }
 
   // An attack "lands" at the start of its active window. Bags swing away from the player.
-  function hitBags(px, pz, dirx, dirz, reach, impulse) {
+  // hitY = world height of the strike (so the dent lands where it hit)
+  function hitBags(px, pz, dirx, dirz, reach, impulse, hitY) {
     let hit = false;
     for (const b of bags) {
       const dx = b.x - px, dz = b.z - pz, dist = Math.hypot(dx, dz);
       if (dist > reach + 0.4 || dist < 0.01) continue;
       if ((dx * dirx + dz * dirz) / dist < 0.82) continue;
-      b.vx += (-dz / dist) * impulse; // rotation.x swings the bag toward -z
-      b.vz += (dx / dist) * impulse;
+      const k = impulse * 0.45;      // swing scale: a hard kick throws the bag ~25 degrees
+      b.vx += (-dz / dist) * k; // rotation.x swings the bag toward -z
+      b.vz += (dx / dist) * k;
+      b.dirx = dx / dist; b.dirz = dz / dist; b.dy = (hitY == null ? 1.3 : hitY) - 3.2;   // pivot is at y 3.2
+      b.dv += impulse * 0.3; b.dirty = true;
       b.flash = 1; hit = true;
     }
     return hit;
   }
 
   layout();
-  return { solids, pads, spawns, bags, decor, ropes, RING, HALF, overlap, topOver, normalOf, build, update, hitBags };
+  return { solids, pads, spawns, bags, decor, ropes, RING, GATE, HALF, overlap, topOver, normalOf, build, update, hitBags };
 })();
 if (typeof module !== 'undefined') module.exports = MAP;

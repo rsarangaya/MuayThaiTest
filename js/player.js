@@ -22,11 +22,12 @@ class Player {
     this.yaw = 0; this.pitch = 0;
     this.input = { fwd: 0, side: 0, jump: false, crouch: false, sprint: false };
     this.onEvent = () => {};
+    this.speedCap = null;
     this.respawn({ x: 0, z: 0, yaw: 0 });
   }
 
   respawn(s) {
-    Object.assign(this.pos, { x: s.x, y: 0, z: s.z }); Object.assign(this.prev, this.pos);
+    Object.assign(this.pos, { x: s.x, y: s.y || 0, z: s.z }); Object.assign(this.prev, this.pos);
     Object.assign(this.vel, { x: 0, y: 0, z: 0 });
     this.yaw = s.yaw || 0; this.pitch = 0;
     this.t = 0; this.onGround = true; this.crouched = false; this.sliding = false;
@@ -178,6 +179,11 @@ class Player {
       }
     }
 
+    // speedCap: set by the game inside the ring so nobody can out-run the bot (0 = held in place, e.g. clinched)
+    if (this.speedCap != null) {
+      const sp = this.hspeed;
+      if (sp > this.speedCap) { const k = sp > 1e-6 ? this.speedCap / sp : 0; this.vel.x *= k; this.vel.z *= k; }
+    }
     this._move(dt);
     const lim = this.map.HALF - 0.5;
     this.pos.x = Math.max(-lim, Math.min(lim, this.pos.x)); this.pos.z = Math.max(-lim, Math.min(lim, this.pos.z));
