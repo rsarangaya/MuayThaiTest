@@ -44,6 +44,7 @@
   const bot = new Bot(THREE, scene, MAP.RING);
   let hp = 100, shake = 0, hurtFlash = 0, teleT = 0;
   let stamina = 100, stamDelay = 0, clinch = null, inRingPrev = false, gateMode = null;
+  let versus = false, vsKO = 0, vsSendT = 0, vsReset = 0; const vsScore = { me: 0, opp: 0 };   // online versus state
 
   // ---------- difficulty + training ----------
   // skill = how often / how correctly the bot defends, aggr = attack tempo, react = extra reaction delay (s), dmg = damage it deals
@@ -54,7 +55,7 @@
     nak: { label: 'NAK MUAY', skill: 0.98, aggr: 1.6, react: -0.03, dmg: 1.4 },
   };
   const TRAIN_BOTS = { dummy: 'DUMMY', guard: 'GUARD', drill: 'DRILL' };
-  const training = () => settings.mode === 'train';
+  const training = () => settings.mode === 'train' && !versus;
   const LEVEL_NAME = { low: 'LEGS', mid: 'BODY', high: 'HEAD' };
   const tr = { attempts: 0, hits: 0, combo: 0, best: 0, dmg: 0, lastT: -9, last: '—' };
   function renderTrain() {
@@ -98,6 +99,7 @@
     const lvl = PATK[name], hitY = player.pos.y + { low: 0.55, mid: 1.2, high: 1.65 }[lvl ? lvl.level : 'mid'];   // where on the bag the strike lands
     if (MAP.hitBags(player.pos.x, player.pos.z, fx, fz, def.reach, def.impulse, hitY)) { toast('HIT · ' + name.toUpperCase(), 'hit'); }
     const A = PATK[name]; if (!A) return;
+    if (versus) { vsStrike(name, side, def, A, fx, fz); return; }
     const bx = bot.x - player.pos.x, bz = bot.z - player.pos.z, d = Math.hypot(bx, bz);
     const held = clinch && clinch.holder === 'player';           // inside our own plum every knee / elbow connects, harder
     if (!held && (d < 0.01 || (bx * fx + bz * fz) / d < 0.62)) { // bot not in front of the strike: a whiff the bot may punish
@@ -124,13 +126,22 @@
   bot.onActive = a => {
     const dx = player.pos.x - bot.x, dz = player.pos.z - bot.z, d = Math.hypot(dx, dz);
     if (d - bot.f.cur[22] > a.reach + 0.3) return;
-    if (a.level === 'low' && player.pos.y - bot.y > 0.5) { toast('JUMPED IT', 'hot'); return; }
-    if (a.level === 'high' && (player.crouched || player.sliding)) { toast('DUCKED', 'hot'); return; }
+    if (avoided(a)) return;
     if (a.type === 'plum') {                                      // the bot reaches for the plum
       if (clinch) return;
       if ((vm.holds.longGuard && Math.random() < 0.7) || !player.onGround) { toast('PLUM AVOIDED', 'hot'); return; }
       startClinch('bot'); return;
     }
+    if (incoming(a, dx, dz, d, (DIFF[settings.difficulty] || DIFF.normal).dmg) === 'checked') bot.stagger();
+  };
+  // jumped over a low kick / ducked under a high one
+  function avoided(a) {
+    if (a.level === 'low' && player.pos.y - bot.y > 0.5) { toast('JUMPED IT', 'hot'); return true; }
+    if (a.level === 'high' && (player.crouched || player.sliding)) { toast('DUCKED', 'hot'); return true; }
+    return false;
+  }
+  // a strike reaches the player (from the bot, or from the other player online): block / check / take it. Returns hit | blocked | checked
+  function incoming(a, dx, dz, d, mul) {
     const mySide = a.side === 'L' ? 'R' : 'L', h = vm.holds;
     const punch = a.type === 'jab' || a.type === 'cross' || a.type === 'hook';
     const sideOk = a.type === 'jab' || a.type === 'cross';
@@ -138,18 +149,20 @@
     if (h.longGuard && (a.type === 'jab' || a.type === 'cross' || a.type === 'teep')) res = 'blocked';
     else if (h.block && (punch || a.type === 'highkick' || a.type === 'midkick') && (sideOk || h.block === mySide)) res = 'blocked';
     else if (h.check === a.level && (h.checkSide === mySide || a.type === 'teep') && a.type !== 'jab' && !punch) res = 'checked';
-    if (res === 'checked') { toast('CHECKED', 'hot'); bot.stagger(); return; }
-    const dmg = Math.round(a.dmg * (DIFF[settings.difficulty] || DIFF.normal).dmg * 10) / 10;
-    if (res === 'blocked') { toast('BLOCKED', 'hot'); if (!training()) hp -= dmg * 0.15; shake = Math.max(shake, 0.1); }
+    if (res === 'checked') { toast('CHECKED', 'hot'); return res; }
+    const dmg = Math.round(a.dmg * mul * 10) / 10;
+    if (res === 'blocked') { toast('BLOCKED', 'hot'); if (!training()) hp = Math.max(1, hp - dmg * 0.15); shake = Math.max(shake, 0.1); }
     else { toast(training() ? 'WOULD HIT · -' + dmg + ' HP' : '-' + dmg + ' HP', 'hit'); damagePlayer(dmg); if (player.onGround && d > 0.01) { player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; } }
-  };
+    return res;
+  }
   bot.onKO = () => toast('BOT KO', 'hot');
 
   // Roundhouse opens with a 45-degree step: shove the body diagonally forward, away from the kicking side.
   vm.onStart = (name, side, def) => {
     stamina = Math.max(0, stamina - (COST[name] || 8)); stamDelay = 0.7;
     const lvl = PATK[name];
-    if (lvl && Math.hypot(bot.x - player.pos.x, bot.z - player.pos.z) < 5) bot.notice(name === 'knee' ? 'midkick' : name === 'elbow' ? 'hook' : lvl.type || name, side, lvl.level);
+    if (versus) NET.send({ t: 'mv', n: name, s: side });
+    else if (lvl && Math.hypot(bot.x - player.pos.x, bot.z - player.pos.z) < 5) bot.notice(name === 'knee' ? 'midkick' : name === 'elbow' ? 'hook' : lvl.type || name, side, lvl.level);
     if (!def.step || !player.onGround || player.mantle) return;
     const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw), s = side === 'R' ? -1 : 1, r = Math.SQRT1_2;
     const dx = -sy * r + cy * r * s, dz = -cy * r + -sy * r * s;
@@ -223,6 +236,7 @@
   // ---------- combat input: stamina, attacks, clinch ----------
   const COST = { jab: 4, cross: 6, hook: 8, jabB: 5, crossB: 7, hookB: 9, legkick: 14, midkick: 14, highkick: 16, teep: 10, knee: 12, elbow: 10 };
   function attack(name, sideMod) {
+    if (versus && vsKO > 0) return;
     if (clinch) { if (clinch.holder === 'player' && (name === 'knee' || name === 'elbow') && stamina >= 4) vm.trigger(name, sideMod); return; }
     if (stamina < 1) { toast('NO STAMINA', 'hot'); return; }
     vm.trigger(name, sideMod);
@@ -249,12 +263,12 @@
       case 'checkLow': case 'checkMid': case 'checkHigh': vm.setHolds({ checkSide: isDown('sideMod') ? 'L' : 'R' }); break;
       case 'clinch': toggleClinch(); break;
       case 'interact': useGate(); break;
-      case 'modeToggle': setMode(training() ? 'spar' : 'train'); break;
-      case 'trainBot': setTrainBot(cycle(TRAIN_BOTS, settings.trainBot)); break;
-      case 'difficulty': setDifficulty(cycle(DIFF, settings.difficulty)); break;
-      case 'respawn': goZone(zoneIdx); break;
-      case 'zoneNext': goZone(zoneIdx + 1); break;
-      case 'zonePrev': goZone(zoneIdx - 1); break;
+      case 'modeToggle': if (!versus) setMode(training() ? 'spar' : 'train'); break;
+      case 'trainBot': if (!versus) setTrainBot(cycle(TRAIN_BOTS, settings.trainBot)); break;
+      case 'difficulty': if (!versus) setDifficulty(cycle(DIFF, settings.difficulty)); break;
+      case 'respawn': if (!versus) goZone(zoneIdx); break;
+      case 'zoneNext': if (!versus) goZone(zoneIdx + 1); break;
+      case 'zonePrev': if (!versus) goZone(zoneIdx - 1); break;
       case 'autoSprint': settings.autoSprint = !settings.autoSprint; $('auto').checked = settings.autoSprint; saveSettings(); toast('AUTO-SPRINT ' + (settings.autoSprint ? 'ON' : 'OFF')); break;
       case 'help': $('help').classList.toggle('hidden'); break;
     }
@@ -272,6 +286,7 @@
   // Plum clinch. holder 'player': we have the bot's head (knee / elbow for bonus damage, bot struggles free over time).
   // holder 'bot': the bot has us; tap jab + cross (alternating is worth more) to fill the escape bar before it knees us up.
   function toggleClinch() {
+    if (versus) { toast('NO CLINCH ONLINE YET', 'hot'); return; }
     if (clinch) { if (clinch.holder === 'player') endClinch('release'); return; }
     const dx = bot.x - player.pos.x, dz = bot.z - player.pos.z, d = Math.hypot(dx, dz);
     const front = d > 0.01 && (dx * -Math.sin(player.yaw) + dz * -Math.cos(player.yaw)) / d > 0.55;
@@ -335,8 +350,97 @@
     hurtFlash = training() ? 0.35 : 1; shake = Math.max(shake, 0.4);
     if (training()) return;                                       // training: hits show up but never hurt
     hp -= n;
+    if (versus) { if (hp <= 0 && vsKO <= 0) { hp = 0; vsKO = 3.4; vsScore.opp++; NET.send({ t: 'ko' }); toast('YOU WERE KO\'D', 'hit'); vsHud(); } return; }
     if (hp <= 0) { toast('KO', 'hit'); hp = 100; stamina = 100; endClinch(); bot.reset(); player.respawn(MAP.spawns[zoneIdx]); }
   }
+
+  // ---------- online versus (two players over a WebRTC data channel; see net.js) ----------
+  // Each browser runs its own player. The other player is shown on the bot's body (bot.mode = 'remote'), driven by ~20 Hz state
+  // messages plus move-start events. The attacker says "I landed X"; the defender decides hit / blocked / checked against its own
+  // guard and replies, so blocks and ducks are judged by the person who actually did them.
+  const REMOTE_MOVE = { jab: 'jab', cross: 'cross', jabB: 'jabB', crossB: 'crossB', legkick: 'legkick', midkick: 'midkick', highkick: 'highkick', knee: 'knee' };
+  function remoteMove(name, side) {
+    if (REMOTE_MOVE[name]) return REMOTE_MOVE[name];
+    if (name === 'hook' || name === 'elbow') return side === 'L' ? 'lhook' : 'rhook';
+    if (name === 'hookB') return side === 'L' ? 'lhookB' : 'rhook';
+    if (name === 'teep') return side === 'L' ? 'teep' : 'rteep';
+    return null;
+  }
+  const vsSpawn = host => { const R = MAP.RING; return { x: R.cx, y: R.y, z: R.cz + (host ? 2.6 : -2.6), yaw: host ? 0 : Math.PI }; };
+  function vsHud() {
+    const box = $('vsBox'); box.classList.toggle('hidden', !versus);
+    if (versus) box.textContent = 'ROOM ' + NET.code() + '   YOU ' + vsScore.me + ' – ' + vsScore.opp + ' OPPONENT';
+  }
+  function vsStrike(name, side, def, A, fx, fz) {
+    if (bot.ko || vsKO > 0) return;
+    const bx = bot.x - player.pos.x, bz = bot.z - player.pos.z, d = Math.hypot(bx, bz);
+    if (d < 0.01 || (bx * fx + bz * fz) / d < 0.62 || d - bot.f.cur[22] > def.reach + 0.45) return;      // whiff
+    const dmg = A.dmg * (0.65 + 0.35 * Math.min(1, stamina / 45));
+    NET.send({ t: 'hit', a: { type: A.type || name, side, level: A.level, dmg, name }, dx: bx / d, dz: bz / d, d });
+  }
+  function vsRound() {                                              // new round: both back to their corners, full health
+    const host = NET.role() === 'host', o = vsSpawn(!host);
+    hp = 100; stamina = 100; vsKO = 0; hurtFlash = 0;
+    player.respawn(vsSpawn(host));
+    bot.ko = false; bot.hp = 100; bot.f.anim = null; bot.f.base = STANCE; bot.f.cur = STANCE.slice();
+    Object.assign(bot.remote, { x: o.x, y: o.y, z: o.z, yaw: o.yaw, hold: null, crouch: false });
+    bot.x = o.x; bot.y = o.y; bot.z = o.z; bot.facing = o.yaw;
+    vsHud(); toast('FIGHT!', 'hot');
+  }
+  function startVersus() {
+    versus = true; vsScore.me = vsScore.opp = 0; vsSendT = 0;
+    endClinch(); bot.reset(); bot.mode = 'remote'; bot.noDamage = true; bot.locked = false;
+    renderTrain(); $('prompt').textContent = ''; $('telegraph').style.opacity = 0;
+    vsRound(); toast('CONNECTED — ' + (NET.role() === 'host' ? 'YOU HOST' : 'YOU JOINED'), 'hot');
+    $('vsStatus').textContent = 'Connected to room ' + NET.code() + ' — click to play'; $('vsLeave').classList.remove('hidden');
+  }
+  function endVersus(msg) {
+    if (!versus) return;
+    versus = false; vsKO = 0; vsHud(); applyBotSettings(); resetFight(); goZone(zoneIdx);
+    toast(msg || 'LEFT THE MATCH', 'hot');
+    $('vsStatus').textContent = msg || ''; $('vsLeave').classList.add('hidden');
+  }
+  function vsTick(dt) {
+    if (vsKO > 0) { vsKO -= dt; if (vsKO <= 0) vsRound(); }
+    vsSendT -= dt;
+    if (vsSendT <= 0) {
+      vsSendT = 0.05;
+      const h = vm.holds; let hold = null;
+      if (h.longGuard) hold = { type: 'long' }; else if (h.block) hold = { type: 'block' };
+      else if (h.check) hold = { type: 'check', level: h.check, side: h.checkSide === 'L' ? 'L' : 'R' };
+      const r3 = v => Math.round(v * 1000) / 1000;
+      NET.send({ t: 's', x: r3(player.pos.x), y: r3(player.pos.y), z: r3(player.pos.z), yaw: r3(player.yaw), h: hold, c: player.crouched || player.sliding ? 1 : 0, hp: Math.max(0, Math.round(hp)), st: Math.round(stamina) });
+    }
+  }
+  function onNet(m) {
+    if (!versus || !m) return;
+    switch (m.t) {
+      case 's': { const r = bot.remote; r.x = m.x; r.y = m.y; r.z = m.z; r.yaw = m.yaw; r.hold = m.h || null; r.crouch = !!m.c; bot.hp = m.hp; bot.stam = m.st; break; }
+      case 'mv': { const k = remoteMove(m.n, m.s); if (k && !bot.ko) bot.f.play(BMOVES[k]); break; }
+      case 'hit': {
+        if (vsKO > 0) { NET.send({ t: 'res', r: 'miss' }); break; }
+        const res = avoided(m.a) ? 'dodged' : incoming(m.a, m.dx, m.dz, m.d, 1);
+        if (res === 'checked') bot.f.play(BSTAGGER);
+        NET.send({ t: 'res', r: res, n: m.a.name });
+        break;
+      }
+      case 'res': {
+        if (m.r === 'hit') { bot.f.flash = 1; bot.f.play(BFLINCH); toast('HIT · ' + (m.n || '').toUpperCase(), 'hit'); shake = Math.max(shake, 0.25); }
+        else if (m.r === 'blocked') toast('BLOCKED', 'hot');
+        else if (m.r === 'checked') { toast('CHECKED', 'hot'); const dx = player.pos.x - bot.x, dz = player.pos.z - bot.z, d = Math.hypot(dx, dz) || 1; player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; }
+        else if (m.r === 'dodged') toast('DODGED', 'hot');
+        break;
+      }
+      case 'ko': if (vsKO <= 0) { vsScore.me++; vsKO = 3.4; bot.ko = true; bot.f.play(BKO); toast('KO!', 'hot'); vsHud(); } break;
+    }
+  }
+  NET.onMessage = onNet;
+  NET.onOpen = () => startVersus();
+  NET.onClose = () => endVersus('OPPONENT LEFT');
+  NET.onStatus = s => { $('vsStatus').textContent = s; };
+  $('vsHost').onclick = () => { if (!NET.supported()) { $('vsStatus').textContent = 'Online play library failed to load (offline?)'; return; } NET.host(); };
+  $('vsJoin').onclick = () => { if (!NET.supported()) { $('vsStatus').textContent = 'Online play library failed to load (offline?)'; return; } NET.join($('vsCode').value); };
+  $('vsLeave').onclick = () => { NET.leave(); endVersus('LEFT THE MATCH'); };
 
   // ---------- input events ----------
   let rebinding = null, rebindEnd = 0;
@@ -347,6 +451,7 @@
     binds[id][slot] = code; saveBinds(); renderBinds(); renderHelp();
   }
   addEventListener('keydown', e => {
+    if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') return;     // typing a room code
     if (rebinding) { e.preventDefault(); if (e.code === 'Escape') { rebinding = null; rebindEnd = performance.now(); renderBinds(); } else setBind(e.code); return; }
     if (isBound(e.code)) e.preventDefault();
     if (e.repeat) return;
@@ -426,7 +531,7 @@
       block: isDown('blockL') ? 'L' : isDown('blockR') ? 'R' : null, longGuard: isDown('longGuard'),
       check: isDown('checkLow') ? 'low' : isDown('checkMid') ? 'mid' : isDown('checkHigh') ? 'high' : null,
     });
-    if (clinch) { I.fwd = I.side = 0; I.jump = false; }
+    if (clinch || (versus && vsKO > 0)) { I.fwd = I.side = 0; I.jump = false; }
   }
 
   // ---------- loop ----------
@@ -457,13 +562,14 @@
       if (training()) stamina = 100;                                   // training: unlimited stamina
       // ring entrance prompt
       const G = MAP.GATE, insideRing = Math.abs(player.pos.x - R.cx) < R.hx && Math.abs(player.pos.z - R.cz) < R.hz && player.pos.y < R.y + 0.9;
-      gateMode = !clinch && Math.hypot(player.pos.x - G.x, player.pos.z - G.z) < 4.2 ? (insideRing ? 'exit' : 'enter') : null;
+      gateMode = !versus && !clinch && Math.hypot(player.pos.x - G.x, player.pos.z - G.z) < 4.2 ? (insideRing ? 'exit' : 'enter') : null;
       $('prompt').textContent = gateMode ? '[' + bindLabel('interact') + ']  ' + (gateMode === 'exit' ? 'EXIT RING' : 'ENTER RING') : '';
       if (clinch) updateClinch(dt);
       acc += dt;
       while (acc >= DT) { player.step(DT); acc -= DT; MAP.update(DT, player); pushOutOfBot(); }
       bot.update(dt, player);
-    } else acc = 0;
+    } else { acc = 0; if (versus) bot.update(dt, player); }      // online: the opponent keeps moving while this player is paused
+    if (versus) vsTick(dt);
     time += dt;
     const alpha = acc / DT;
     const px = player.prev.x + (player.pos.x - player.prev.x) * alpha, py = player.prev.y + (player.pos.y - player.prev.y) * alpha, pz = player.prev.z + (player.pos.z - player.prev.z) * alpha;
@@ -516,5 +622,5 @@
   }
   requestAnimationFrame(frame);
 
-  window.game = { player, vm, MAP, bot, settings, goZone, setMode, setDifficulty, setTrainBot, useGate, gate: () => gateMode, tr, startClinch, endClinch, toggleClinch, handle, binds: () => binds, state: () => ({ hp, stamina, clinch }), setStamina: v => { stamina = v; }, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
+  window.game = { NET, vsScore, isVersus: () => versus, vsStrike, player, vm, MAP, bot, settings, goZone, setMode, setDifficulty, setTrainBot, useGate, gate: () => gateMode, tr, startClinch, endClinch, toggleClinch, handle, binds: () => binds, state: () => ({ hp, stamina, clinch }), setStamina: v => { stamina = v; }, setHp: v => { hp = v; }, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
 })();

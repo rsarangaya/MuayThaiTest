@@ -65,6 +65,7 @@
 <div id="bars2"><span>STA</span><div class="bar st"><i id="stYou"></i></div><div class="bar st"><i id="stBot"></i></div><span>STA</span></div>
 <div id="clinch" class="hidden"><div id="clinchLabel"></div><div class="bar"><i id="clinchFill"></i></div></div>
 <div id="train" class="hidden"><b>TRAINING</b> · BOT: <span id="trBot"></span><br><span id="trStats"></span><br><span id="trLast"></span><div class="dim">M spar/training · U bot mode · N difficulty</div></div>
+<div id="vsBox" class="hidden" style="position:fixed;left:50%;top:44px;transform:translateX(-50%);font:700 11px Consolas,monospace;letter-spacing:.14em;color:var(--acc);text-shadow:0 1px 3px #000;white-space:nowrap"></div>
 <div id="prompt"></div>
 <div id="telegraph"></div>
 <div id="topleft"><b id="zone"></b> &nbsp;·&nbsp; <span id="fps"></span><br><kbd>F1</kbd> controls &nbsp; <kbd>Backspace</kbd> respawn &nbsp; <kbd>[</kbd> <kbd>]</kbd> zone</div>
@@ -91,6 +92,14 @@
       <label for="diffSel">Difficulty</label><select id="diffSel"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option><option value="nak">Nak Muay (brutal)</option></select>
       <label for="trainSel">Training bot</label><select id="trainSel"><option value="dummy">Dummy (stands still)</option><option value="guard">Guard (holds a high guard)</option><option value="drill">Drill (slow single strikes at you)</option></select>
     </div>
+    <div class="settings" id="versus" style="display:block;margin-top:14px">
+      <b style="color:var(--fg);letter-spacing:.1em;font-size:11px">PLAY A FRIEND (ONLINE)</b><br>
+      <button class="btn" id="vsHost">Create room</button>
+      &nbsp;or&nbsp; <input id="vsCode" type="text" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" style="width:70px;text-transform:uppercase;background:#2a3040;color:var(--fg);border:1px solid #3d4658;border-radius:5px;padding:3px 6px;font:12px Consolas,monospace">
+      <button class="btn" id="vsJoin" style="min-width:60px">Join</button>
+      <button class="btn hidden" id="vsLeave" style="min-width:60px">Leave</button>
+      <div id="vsStatus" style="margin-top:6px;color:var(--acc);min-height:16px"></div>
+    </div>
     <div class="settings" style="display:block;margin-top:10px"><button class="btn" id="bindToggle">Customize controls ▾</button> <button class="btn hidden" id="bindReset">Reset to default</button></div>
     <div id="binds" class="hidden"></div>
     <div class="hint">Esc to pause · F1 toggles the controls list in-game</div>
@@ -102,6 +111,8 @@
 <script src="js/player.js"></script>
 <script src="js/viewmodel.js"></script>
 <script src="js/bot.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="js/net.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

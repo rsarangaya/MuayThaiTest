@@ -109,6 +109,9 @@ const BHOLD = {
   long: P({ la: [1.38, 0.05, 0, 0.45], ra: [0.62, -0.14, 0, 2.7], tp: -0.05 }),
   evade: P({ tp: 0.3, hp: 0.1, la: [0.6, 0.15, 0, 2.6], ra: [0.6, -0.15, 0, 2.6] }),
 };
+const BCROUCH = P({ drop: 0.28, tp: -0.3, hp: -0.4, la: HIGHG.la, ra: HIGHG.ra });
+// moves only the online opponent uses: a knee (the plum-knee pose, guard up)
+BMOVES.knee = Object.assign({ type: 'knee', side: 'R', level: 'mid', reach: 1.0, dmg: 10, active: [0.4, 0.55] }, BCL.knee);
 const BCHECK = { low: [0.7, 1.0], mid: [1.15, 1.6], high: [1.5, 1.9] }; // [hipPitch, knee]
 function checkPose(side, level) {
   const [hp, kn] = BCHECK[level], o = { la: HIGHG.la, ra: HIGHG.ra, tp: -0.08, hp: -0.2, drop: 0.0 };
@@ -284,6 +287,7 @@ class Bot {
     this.attack = null; this.queue = []; this.cool = 1.2; this.gap = 0; this.def = null; this.react = null;
     this.stun = 0; this.strafe = Math.random() < 0.5 ? 1 : -1; this.strafeT = 2; this.evadeT = 0; this.speed = 0;
     this.stam = 100; this.locked = false; this._counter = null; this.hits = [];
+    this.remote = { x: this.x, y: this.y, z: this.z, yaw: 0, hold: null, crouch: false };
     this.f.anim = null; this.f.base = STANCE; this.f.cur = STANCE.slice();
   }
   get dist() { return this.lastDist || 9; }
@@ -390,6 +394,19 @@ class Bot {
 
   update(dt, player) {
     const f = this.f, ring = this.ring; this.t += dt;
+    if (this.mode === 'remote') {                       // versus: the body of the other player, driven by network state
+      const n = this.remote, k = 1 - Math.exp(-16 * dt), ox = this.x, oz = this.z;
+      this.x += (n.x - this.x) * k; this.z += (n.z - this.z) * k; this.y += (n.y - this.y) * k;
+      let diff = n.yaw - this.facing; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); this.facing += diff * k;
+      if (!f.playing && !this.ko) {
+        const h = n.hold;
+        f.base = !h ? (n.crouch ? BCROUCH : STANCE) : h.type === 'check' ? checkPose(h.side, h.level) : BHOLD[h.type] || STANCE;
+      }
+      f.update(dt, Math.min(5, Math.hypot(this.x - ox, this.z - oz) / Math.max(dt, 1e-4)));
+      f.root.position.set(this.x, this.y, this.z);
+      f.root.rotation.set(f.root.userData.tilt || 0, this.facing + (f.root.userData.yawOffset || 0), 0);
+      return;
+    }
     if (this.locked) {                                  // clinched: the game positions and poses the bot
       f.update(dt, 0);
       f.root.position.set(this.x, this.y, this.z);
