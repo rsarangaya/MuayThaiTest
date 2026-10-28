@@ -257,6 +257,7 @@ class ViewModel {
 
   setHolds(h) { Object.assign(this.holds, h); }
   get busy() { return !!this.action; }
+  interrupt() { this.action = null; this.name = ''; this.pending = null; }   // a critical hit knocks the swing out
   get label() {
     if (this.action) return this.name;
     const h = this.holds;

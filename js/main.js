@@ -107,11 +107,17 @@
       if (training()) trainNote(name, A, 'miss', 0);
       return;
     }
-    const dmgScale = (0.65 + 0.35 * Math.min(1, stamina / 45)) * (held ? 1.4 : 1);   // tired strikes hurt less
-    const res = bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: A.dmg * dmgScale, dist: d, dx: bx / d, dz: bz / d });
+    const dmgScale = (0.4 + 0.6 * Math.min(1, stamina / 60)) * (held ? 1.4 : 1);   // tired strikes hurt less
+    // combo: distinct strikes that keep landing build a bonus (3+), a heavy finisher adds more; a repeated move or any miss / block resets it
+    const n = lastRepeat ? 1 : (time - comboT < 2.0 ? combo : 0) + 1;
+    const cMul = n >= 3 ? (1 + 0.08 * Math.min(3, n - 2)) * (HEAVY.has(name) ? 1.15 : 1) : 1, base = A.dmg * dmgScale;
+    const res = bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: base * cMul, cap: base * 2, dist: d, dx: bx / d, dz: bz / d, counter: time < counterUntil });
+    if (res === 'hit') { counterUntil = 0; combo = n; comboT = time; if (n >= 2) toast('COMBO ×' + n + (cMul > 1 ? ' · +' + Math.round((cMul - 1) * 100) + '%' : ''), 'hot'); }
+    else combo = 0;
     if (held && res === 'hit') clinch.meter = Math.max(0, clinch.meter - 18);                   // damage wears down its escape
-    if (training()) trainNote(name, A, res, A.dmg * dmgScale);
-    if (res === 'hit') toast('HIT · ' + name.toUpperCase(), 'hit');
+    if (training()) trainNote(name, A, res, bot.lastDmg || A.dmg * dmgScale);
+    if (res === 'hit' && bot.lastCrit) { toast('CRITICAL · ' + bot.lastCrit, 'hit'); shake = Math.max(shake, 0.45); }
+    else if (res === 'hit') toast('HIT · ' + name.toUpperCase(), 'hit');
     else if (res === 'blocked') toast('BLOCKED', 'hot');
     else if (res === 'checked') toast('CHECKED', 'hot');
     else if (res === 'dodged') toast('DODGED', 'hot');
@@ -125,7 +131,7 @@
   };
   bot.onActive = a => {
     const dx = player.pos.x - bot.x, dz = player.pos.z - bot.z, d = Math.hypot(dx, dz);
-    if (d - bot.f.cur[22] > a.reach + 0.3) return;
+    if (d - bot.f.cur[22] > a.reach + 0.3 + (lean ? lean.disp : 0)) return;     // judged from where you stood before the lean
     if (avoided(a)) return;
     if (a.type === 'plum') {                                      // the bot reaches for the plum
       if (clinch) return;
@@ -136,6 +142,8 @@
   };
   // jumped over a low kick / ducked under a high one
   function avoided(a) {
+    if (leanActive('back') && (a.level === 'high' || a.type === 'plum')) { leanDodged('LEANED OUT'); return true; }
+    if (leanActive('slip') && a.level === 'high' && (a.type === 'jab' || a.type === 'cross')) { leanDodged('SLIPPED'); return true; }
     if (a.level === 'low' && player.pos.y - bot.y > 0.5) { toast('JUMPED IT', 'hot'); return true; }
     if (a.level === 'high' && (player.crouched || player.sliding)) { toast('DUCKED', 'hot'); return true; }
     return false;
@@ -149,17 +157,24 @@
     if (h.longGuard && (a.type === 'jab' || a.type === 'cross' || a.type === 'teep')) res = 'blocked';
     else if (h.block && (punch || a.type === 'highkick' || a.type === 'midkick') && (sideOk || h.block === mySide)) res = 'blocked';
     else if (h.check === a.level && (h.checkSide === mySide || a.type === 'teep') && a.type !== 'jab' && !punch) res = 'checked';
-    if (res === 'checked') { toast('CHECKED', 'hot'); return res; }
-    const dmg = Math.round(a.dmg * mul * 10) / 10;
-    if (res === 'blocked') { toast('BLOCKED', 'hot'); if (!training()) hp = Math.max(1, hp - dmg * 0.15); shake = Math.max(shake, 0.1); }
-    else { toast(training() ? 'WOULD HIT · -' + dmg + ' HP' : '-' + dmg + ' HP', 'hit'); damagePlayer(dmg); if (player.onGround && d > 0.01) { player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; } }
+    if (res === 'checked') { toast('CHECKED +STAMINA', 'hot'); counterUntil = time + 1.0; stamina = Math.min(100, stamina + 7); return res; }
+    let dmg = a.dmg * mul, crit = null;
+    if (res === 'hit') {                                           // caught mid-swing, or the bot punishing your own whiff / block, is a critical
+      if (vm.busy) { crit = 'INTERRUPTED'; dmg *= 1.6; vm.interrupt(); stamDelay = 1.2; } else if (a.counter) { crit = 'COUNTER'; dmg *= 1.5; }
+    }
+    dmg = Math.round(dmg * 10) / 10;
+    if (res === 'blocked') { toast('BLOCKED +STAMINA', 'hot'); counterUntil = time + 1.0; stamina = Math.min(100, stamina + 7); if (!training()) hp = Math.max(1, hp - dmg * 0.15); shake = Math.max(shake, 0.1); }
+    else { toast((crit ? 'CRITICAL · ' + crit + ' · ' : '') + (training() ? 'WOULD HIT · -' + dmg + ' HP' : '-' + dmg + ' HP'), 'hit'); damagePlayer(dmg); if (player.onGround && d > 0.01) { player.vel.x += dx / d * 3; player.vel.z += dz / d * 3; } }
     return res;
   }
   bot.onKO = () => toast('BOT KO', 'hot');
 
   // Roundhouse opens with a 45-degree step: shove the body diagonally forward, away from the kicking side.
   vm.onStart = (name, side, def) => {
-    stamina = Math.max(0, stamina - (COST[name] || 8)); stamDelay = 0.7;
+    hist = hist.filter(h => time - h.t < 3); lastRepeat = hist.slice(-3).some(h => h.name === name);
+    const flow = !lastRepeat && hist.length && time - lastStrikeT < 1.2;
+    hist.push({ name, t: time }); lastStrikeT = time;
+    stamina = Math.max(0, stamina - (COST[name] || 12) * (lastRepeat ? 1.25 : flow ? 0.8 : 1)); stamDelay = 1.2;
     const lvl = PATK[name];
     if (versus) NET.send({ t: 'mv', n: name, s: side });
     else if (lvl && Math.hypot(bot.x - player.pos.x, bot.z - player.pos.z) < 5) bot.notice(name === 'knee' ? 'midkick' : name === 'elbow' ? 'hook' : lvl.type || name, side, lvl.level);
@@ -201,6 +216,7 @@
     A('Kicks · aim = target (legs / body / head)', 'knee', 'Knee', ['Digit5']), A('Kicks · aim = target (legs / body / head)', 'elbow', 'Elbow', ['Digit6']),
     A('Defence (hold)', 'checkLow', 'Check low', ['KeyZ']), A('Defence (hold)', 'checkMid', 'Check mid', ['KeyX']), A('Defence (hold)', 'checkHigh', 'Check high', ['KeyV']),
     A('Defence (hold)', 'blockL', 'Block left', ['KeyF']), A('Defence (hold)', 'blockR', 'Block right', ['KeyB']), A('Defence (hold)', 'longGuard', 'Long guard', ['KeyH']),
+    A('Evasion (tap)', 'leanBack', 'Lean back (head strikes + plum; not body/legs)', ['WheelDown']), A('Evasion (tap)', 'slip', 'Slip (head jab / cross, not body; strafe key picks the side)', ['WheelUp']),
     A('Clinch', 'clinch', 'Plum clinch / release  (tap Jab + Cross fast to escape)', ['KeyG']),
     A('Ring & training', 'interact', 'Enter / exit the ring (at the green corner)', ['KeyY']),
     A('Ring & training', 'modeToggle', 'Toggle sparring / training mode', ['KeyM']), A('Ring & training', 'trainBot', 'Training bot: dummy / guard / drill', ['KeyU']),
@@ -215,7 +231,7 @@
     for (const id in s) if (binds[id] && Array.isArray(s[id])) binds[id] = [s[id][0] || null, s[id][1] || null];
   } catch (e) {}
   const saveBinds = () => { try { localStorage.setItem('mtfps-binds', JSON.stringify(binds)); } catch (e) {} };
-  const MOUSE_NAMES = { Mouse0: 'Left Click', Mouse1: 'Middle Click', Mouse2: 'Right Click', Mouse3: 'Mouse 4 (Back)', Mouse4: 'Mouse 5 (Forward)' };
+  const MOUSE_NAMES = { Mouse0: 'Left Click', Mouse1: 'Middle Click', Mouse2: 'Right Click', Mouse3: 'Mouse 4 (Back)', Mouse4: 'Mouse 5 (Forward)', WheelDown: 'Scroll Down', WheelUp: 'Scroll Up' };
   const codeLabel = c => !c ? '—' : MOUSE_NAMES[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'L-Shift').replace('ShiftRight', 'R-Shift')
     .replace('ControlLeft', 'L-Ctrl').replace('BracketLeft', '[').replace('BracketRight', ']').replace(/^Arrow/, 'Arrow ');
   const bindLabel = id => binds[id].filter(Boolean).map(codeLabel).join(' / ') || 'unbound';
@@ -234,10 +250,44 @@
   }
 
   // ---------- combat input: stamina, attacks, clinch ----------
-  const COST = { jab: 4, cross: 6, hook: 8, jabB: 5, crossB: 7, hookB: 9, legkick: 14, midkick: 14, highkick: 16, teep: 10, knee: 12, elbow: 10 };
+  const COST = { jab: 8, cross: 12, hook: 14, jabB: 9, crossB: 13, hookB: 15, legkick: 22, midkick: 22, highkick: 26, teep: 15, knee: 18, elbow: 15 };
+  // combos: a fresh move flowing off the last one is cheaper and builds a bonus; repeating a recent move costs extra and builds nothing
+  let counterUntil = 0, hist = [], lastStrikeT = -9, lastRepeat = false, combo = 0, comboT = -9;
+  const HEAVY = new Set(['legkick', 'midkick', 'highkick', 'hook', 'elbow', 'knee']);
+  // lean back (wheel down) and slip (wheel up): timed evasions. Spamming one doubles its stamina cost each time.
+  const LEAN = { back: { cost: 8, start: 0.08, act: 0.38, end: 0.63, dist: 0.3 }, slip: { cost: 5, start: 0.06, act: 0.28, end: 0.5, dist: 0.3 } };
+  let lean = null; const leanStreak = { back: [0, -9], slip: [0, -9] };
+  const leanActive = kind => lean && lean.kind === kind && time - lean.t >= LEAN[kind].start && time - lean.t <= LEAN[kind].act;
+  function startLean(kind) {
+    if (clinch || (versus && vsKO > 0) || vm.busy || !player.onGround) return;
+    if (lean) return;                                              // still going / recovering
+    if (stamina < 1) { toast('NO STAMINA', 'hot'); return; }
+    const L = LEAN[kind], s = leanStreak[kind];
+    s[0] = time - s[1] < 0.8 ? Math.min(3, s[0] + 1) : 0;
+    const cost = L.cost * Math.pow(2, s[0]); s[1] = time + L.end;
+    stamina = Math.max(0, stamina - cost); stamDelay = 1.0;
+    let dir = 0;
+    if (kind === 'slip') dir = player.input.side || (bot.attack && bot.attack.def.side === 'L' ? -1 : 1);   // away from the side the punch comes down
+    lean = { kind, t: time, dir, amt: 0, disp: 0, dodged: false };
+    toast((kind === 'back' ? 'LEAN BACK' : 'SLIP') + (s[0] ? ' · COST ×' + Math.pow(2, s[0]) : ''), 'hot');
+    if (!versus) bot.playerEvade(kind, Math.hypot(bot.x - player.pos.x, bot.z - player.pos.z));
+  }
+  function stepLean(dt) {
+    const L = LEAN[lean.kind], e = time - lean.t, ramp = L.start + 0.07;
+    const amt = e >= L.end ? 0 : e < ramp ? e / ramp : e < L.act ? 1 : 1 - (e - L.act) / (L.end - L.act);
+    const d = (amt - lean.amt) * L.dist, sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+    if (lean.kind === 'back') { player.pos.x += sy * d; player.pos.z += cy * d; }          // backwards = -forward = (sin, cos)
+    else { player.pos.x += cy * d * lean.dir; player.pos.z -= sy * d * lean.dir; }          // right = (cos, -sin)
+    lean.amt = amt; lean.disp = amt * L.dist;
+    if (e >= L.end) lean = null;
+  }
+  function leanDodged(msg) {
+    lean.dodged = true; counterUntil = time + 1.0; stamina = Math.min(100, stamina + 5); toast(msg + ' +STAMINA', 'hot');
+  }
   function attack(name, sideMod) {
     if (versus && vsKO > 0) return;
     if (clinch) { if (clinch.holder === 'player' && (name === 'knee' || name === 'elbow') && stamina >= 4) vm.trigger(name, sideMod); return; }
+    if (lean && !lean.dodged) return;                              // committed to the evasion until it ends (a clean dodge lets you counter at once)
     if (stamina < 1) { toast('NO STAMINA', 'hot'); return; }
     vm.trigger(name, sideMod);
   }
@@ -261,6 +311,8 @@
       case 'knee': attack('knee', isDown('sideMod')); break;
       case 'elbow': attack('elbow', isDown('sideMod')); break;
       case 'checkLow': case 'checkMid': case 'checkHigh': vm.setHolds({ checkSide: isDown('sideMod') ? 'L' : 'R' }); break;
+      case 'leanBack': startLean('back'); break;
+      case 'slip': startLean('slip'); break;
       case 'clinch': toggleClinch(); break;
       case 'interact': useGate(); break;
       case 'modeToggle': if (!versus) setMode(training() ? 'spar' : 'train'); break;
@@ -347,7 +399,7 @@
     if (clinch) fill.style.width = Math.min(100, c.meter) + '%';
   }
   function damagePlayer(n) {
-    hurtFlash = training() ? 0.35 : 1; shake = Math.max(shake, 0.4);
+    hurtFlash = training() ? 0.35 : 1; shake = Math.max(shake, 0.4); combo = 0;
     if (training()) return;                                       // training: hits show up but never hurt
     hp -= n;
     if (versus) { if (hp <= 0 && vsKO <= 0) { hp = 0; vsKO = 3.4; vsScore.opp++; NET.send({ t: 'ko' }); toast('YOU WERE KO\'D', 'hit'); vsHud(); } return; }
@@ -468,6 +520,15 @@
     if (!locked) return;
     keys[code] = true; press(code);
   });
+  let wheelT = 0;                                                  // one scroll gesture = one action (free-spin wheels / trackpads fire bursts)
+  addEventListener('wheel', e => {
+    const code = e.deltaY > 0 ? 'WheelDown' : e.deltaY < 0 ? 'WheelUp' : null; if (!code) return;
+    if (rebinding) { e.preventDefault(); setBind(code); return; }
+    if (!locked) return;
+    e.preventDefault();
+    const now = performance.now(), fresh = now - wheelT > 90; wheelT = now;
+    if (fresh) press(code);
+  }, { passive: false });
   addEventListener('mouseup', e => { const code = 'Mouse' + e.button; keys[code] = false; if (e.button >= 3) e.preventDefault(); });
   addEventListener('auxclick', e => { if (e.button >= 1) e.preventDefault(); });
   addEventListener('mousemove', e => {
@@ -502,7 +563,7 @@
 
   function renderBinds() {
     const box = $('binds'); box.innerHTML = ''; let group = '';
-    const note = document.createElement('div'); note.style.cssText = 'grid-column:1/-1;font-size:11px'; note.textContent = 'Click a slot, then press a key or mouse button (side buttons work). Right-click a slot to clear it. Esc cancels.'; box.appendChild(note);
+    const note = document.createElement('div'); note.style.cssText = 'grid-column:1/-1;font-size:11px'; note.textContent = 'Click a slot, then press a key, mouse button (side buttons work) or scroll the wheel. Right-click a slot to clear it. Esc cancels.'; box.appendChild(note);
     for (const a of ACTIONS) {
       if (a.group !== group) { group = a.group; const h = document.createElement('div'); h.style.cssText = 'grid-column:1/-1;color:var(--acc);letter-spacing:.12em;font-size:11px;margin-top:6px;text-transform:uppercase'; h.textContent = group; box.appendChild(h); }
       const l = document.createElement('div'); l.textContent = a.label; box.appendChild(l);
@@ -553,11 +614,12 @@
       readInput();
       // ring rules: inside the ropes nobody out-runs the bot; clinched = rooted
       const R = MAP.RING, inRing = Math.abs(player.pos.x - R.cx) < R.hx + 0.6 && Math.abs(player.pos.z - R.cz) < R.hz + 0.6 && player.pos.y < R.y + 0.9;
-      player.speedCap = clinch ? 0 : inRing ? BOT_SPEED : null;
+      // the bot can't move while it swings or guards, so neither can you at full pace
+      player.speedCap = clinch ? 0 : inRing ? BOT_SPEED * (vm.busy ? 0.4 : vm.holds.block || vm.holds.longGuard || vm.holds.check ? 0.65 : 1) : null;
       if (inRing !== inRingPrev) { inRingPrev = inRing; if (inRing) toast('RING · SPEED MATCHED TO BOT'); }
       // stamina comes back after a short pause (slower while guarding)
       stamDelay = Math.max(0, stamDelay - dt);
-      if (!clinch && stamDelay <= 0) stamina = Math.min(100, stamina + (vm.holds.block || vm.holds.longGuard || vm.holds.check ? 10 : 20) * dt);
+      if (!clinch && stamDelay <= 0) stamina = Math.min(100, stamina + (vm.holds.block || vm.holds.longGuard || vm.holds.check ? 5 : 11) * dt);
       bot.playerStamina = stamina;
       if (training()) stamina = 100;                                   // training: unlimited stamina
       // ring entrance prompt
@@ -565,6 +627,7 @@
       gateMode = !versus && !clinch && Math.hypot(player.pos.x - G.x, player.pos.z - G.z) < 4.2 ? (insideRing ? 'exit' : 'enter') : null;
       $('prompt').textContent = gateMode ? '[' + bindLabel('interact') + ']  ' + (gateMode === 'exit' ? 'EXIT RING' : 'ENTER RING') : '';
       if (clinch) updateClinch(dt);
+      if (lean) stepLean(dt);
       acc += dt;
       while (acc >= DT) { player.step(DT); acc -= DT; MAP.update(DT, player); pushOutOfBot(); }
       bot.update(dt, player);
@@ -596,8 +659,9 @@
     const ox = k.ox + bobX, fo = -k.oz;
     camera.position.set(px + cy * ox - sy * fo, py + eye + bobY - player.landDip, pz - sy * ox - cy * fo);
     camera.rotation.y = player.yaw + k.yaw;
-    camera.rotation.x = player.pitch + k.pitch + (player.mantle ? -0.08 : 0);
-    camera.rotation.z = camRoll + k.roll;
+    const la = lean ? lean.amt : 0;                                // lean back tips the view up, a slip rolls it to the side
+    camera.rotation.x = player.pitch + k.pitch + (player.mantle ? -0.08 : 0) + (lean && lean.kind === 'back' ? 0.22 * la : 0);
+    camera.rotation.z = camRoll + k.roll - (lean && lean.kind === 'slip' ? lean.dir * 0.1 * la : 0);
     if (shake > 0.001) { // hit reaction
       camera.rotation.x += (Math.random() - 0.5) * shake * 0.08; camera.rotation.y += (Math.random() - 0.5) * shake * 0.08; camera.rotation.z += (Math.random() - 0.5) * shake * 0.06;
       shake *= Math.exp(-8 * dt);
@@ -622,5 +686,5 @@
   }
   requestAnimationFrame(frame);
 
-  window.game = { NET, vsScore, isVersus: () => versus, vsStrike, player, vm, MAP, bot, settings, goZone, setMode, setDifficulty, setTrainBot, useGate, gate: () => gateMode, tr, startClinch, endClinch, toggleClinch, handle, binds: () => binds, state: () => ({ hp, stamina, clinch }), setStamina: v => { stamina = v; }, setHp: v => { hp = v; }, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; } };
+  window.game = { NET, vsScore, isVersus: () => versus, vsStrike, player, vm, MAP, bot, settings, goZone, setMode, setDifficulty, setTrainBot, useGate, gate: () => gateMode, tr, startClinch, endClinch, toggleClinch, handle, binds: () => binds, state: () => ({ hp, stamina, clinch }), setStamina: v => { stamina = v; }, setHp: v => { hp = v; }, step: n => { for (let i = 0; i < n; i++) player.step(DT); }, setLocked: v => { locked = v; }, lean: () => lean, advance: dt => { time += dt; if (lean) stepLean(dt); } };
 })();
