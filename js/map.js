@@ -102,8 +102,8 @@ const MAP = (function () {
     decor.push({ x0: GATE.x - 2.1, x1: GATE.x - 0.3, z0: GATE.z - 2.1, z1: GATE.z - 0.3, y0: RING.y, y1: RING.y + 0.02, color: 0x2fbf6a });
     decor.push({ x0: GATE.x + 0.5, x1: GATE.x + 2.3, z0: GATE.z + 0.5, z1: GATE.z + 2.3, y0: 0, y1: 0.02, color: 0x2fbf6a });
     labels.push({ x: GATE.x, y: RING.y + 2.5, z: GATE.z, text: 'ENTER / EXIT' });
-    // Ropes: invisible thin barriers up to the top rope. They block walking but can be jumped over (not stood
-    // on or mantled, see player.js). The ring is fully enclosed.
+    // Ropes: invisible thin barriers up to the top rope. They block walking (there is no jump) and can't be stood
+    // on or mantled (see player.js). The ring is fully enclosed.
     const WT = 0.12, WH = 1.45;
     const wall = (x0, x1, z0, z1) => solids.push({ kind: 'box', x0, x1, z0, z1, y0: 0, y1: RING.y + WH, hidden: true, rope: true });
     wall(RING.cx - RING.hx - WT, RING.cx + RING.hx + WT, RING.cz - RING.hz - WT, RING.cz - RING.hz + WT);

@@ -1,11 +1,11 @@
 'use strict';
 // Apex-style movement. Fixed-timestep, Source-style accelerate/friction core with:
-//  sprint, crouch, slide (+slope acceleration, steering, slide-jump), auto bunny-hop,
-//  air strafing, tap-strafe, ledge mantle, wall bounce, superglide, jump pads.
+//  sprint, crouch, slide (+slope acceleration, steering), boxing pivot, air strafing, tap-strafe,
+//  ledge mantle (from the air), jump pads. There is no jump: the pivot took its key.
 // Units: metres / seconds. Camera forward at yaw 0 is -Z.
 const PC = {
   R: 0.4, HS: 1.8, HC: 1.0, STEP: 0.5,
-  G: 24, JUMP: 8.4,
+  G: 24, PIVOT_DUR: 0.24, PIVOT_ANG: Math.PI / 2, PIVOT_FOOT: 0.26,
   WALK: 4.8, SPRINT: 7.8, CROUCH: 3.4,
   ACCEL: 8, FRICTION: 7, STOP: 2.2,
   AIR_ACCEL: 8, AIR_CAP: 1.5,
@@ -20,7 +20,8 @@ class Player {
     this.pos = { x: 0, y: 0, z: 0 }; this.prev = { x: 0, y: 0, z: 0 };
     this.vel = { x: 0, y: 0, z: 0 };
     this.yaw = 0; this.pitch = 0;
-    this.input = { fwd: 0, side: 0, jump: false, crouch: false, sprint: false };
+    this.input = { fwd: 0, side: 0, crouch: false, sprint: false };
+    this.stance = 'orthodox';                                   // decides the pivot foot (lead foot: left when orthodox, right when southpaw)
     this.onEvent = () => {};
     this.speedCap = null;
     this.respawn({ x: 0, z: 0, yaw: 0 });
@@ -31,12 +32,34 @@ class Player {
     Object.assign(this.vel, { x: 0, y: 0, z: 0 });
     this.yaw = s.yaw || 0; this.pitch = 0;
     this.t = 0; this.onGround = true; this.crouched = false; this.sliding = false;
-    this.mantle = null; this.canBounce = true; this.airTime = 0; this.groundTime = 0;
+    this.mantle = null; this.airTime = 0; this.groundTime = 0;
     this.groundN = { x: 0, y: 1, z: 0 };
-    this.jumpBuf = 0; this.crouchEdge = 0; this.tapEdge = 0; this.lastJumpT = -9;
-    this.mantleCd = 0; this.slideCd = 0; this.padCd = 0; this.coyote = 0; this.bhop = 0;
-    this.eye = PC.HS - 0.15; this.landDip = 0; this.bounceKick = 0;
+    this.crouchEdge = 0; this.tapEdge = 0;
+    this.mantleCd = 0; this.slideCd = 0; this.padCd = 0;
+    this.eye = PC.HS - 0.15; this.landDip = 0;
+    this.pivot = null; this.pivotLast = -9;
   }
+
+  // boxing pivot: turn 90 degrees toward `dir` (+1 right, -1 left) on the lead foot. The foot stays where it is and the body swings around it,
+  // so the position shifts a little instead of spinning on the spot. Returns false if it can't start.
+  startPivot(dir) {
+    if (this.pivot || !dir || !this.onGround || this.mantle || this.sliding) return false;
+    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw), lat = this.stance === 'southpaw' ? PC.PIVOT_FOOT : -PC.PIVOT_FOOT;
+    this.pivot = { t: 0, dir: Math.sign(dir), ang: 0, fx: this.pos.x + cy * lat - sy * 0.15, fz: this.pos.z - sy * lat - cy * 0.15 };   // foot: to the lead side and a bit forward
+    this.vel.x *= 0.4; this.vel.z *= 0.4;
+    return true;
+  }
+  _stepPivot(dt) {
+    const P = this.pivot; P.t += dt;
+    const u = Math.min(1, P.t / PC.PIVOT_DUR), e = u * u * (3 - 2 * u), ang = P.dir * PC.PIVOT_ANG * e, da = ang - P.ang; P.ang = ang;
+    const d = -da, c = Math.cos(d), s = Math.sin(d);             // yaw falls when turning right; rotate the body about the foot by the same angle
+    const rx = this.pos.x - P.fx, rz = this.pos.z - P.fz, nx = P.fx + rx * c + rz * s, nz = P.fz + rz * c - rx * s;
+    if (!this._blocked(nx, nz, this.pos.y)) { this.pos.x = nx; this.pos.z = nz; }
+    this.yaw += d;
+    if (u >= 1) { this.pivot = null; this.pivotLast = this.t; }
+  }
+  // true while pivoting and for `win` seconds after (hook bonus window)
+  pivotRecent(win) { return !!this.pivot || this.t - this.pivotLast < win; }
 
   get hspeed() { return Math.hypot(this.vel.x, this.vel.z); }
   get height() { return this.crouched ? PC.HC : PC.HS; }
@@ -69,17 +92,6 @@ class Player {
     }
     return true;
   }
-  _wallNormal() {
-    const d = 0.14, probes = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    let best = null, bestDot = 0.0;
-    const sp = this.hspeed || 1;
-    for (const [dx, dz] of probes) {
-      if (!this._blocked(this.pos.x + dx * d, this.pos.z + dz * d, this.pos.y)) continue;
-      const into = (this.vel.x * dx + this.vel.z * dz) / sp; // >0 when heading into the wall
-      if (!best || into > bestDot) { best = { x: -dx, z: -dz }; bestDot = into; }
-    }
-    return best;
-  }
 
   // ---------- velocity helpers ----------
   _friction(dt, f) {
@@ -109,14 +121,15 @@ class Player {
   step(dt) {
     this.t += dt;
     this.prev.x = this.pos.x; this.prev.y = this.pos.y; this.prev.z = this.pos.z;
-    this.jumpBuf = Math.max(0, this.jumpBuf - dt); this.crouchEdge = Math.max(0, this.crouchEdge - dt);
+    this.crouchEdge = Math.max(0, this.crouchEdge - dt);
     this.tapEdge = Math.max(0, this.tapEdge - dt);
-    this.mantleCd -= dt; this.slideCd -= dt; this.padCd -= dt; this.coyote -= dt;
-    this.landDip *= Math.exp(-9 * dt); this.bounceKick *= Math.exp(-8 * dt);
+    this.mantleCd -= dt; this.slideCd -= dt; this.padCd -= dt;
+    this.landDip *= Math.exp(-9 * dt);
+    if (this.pivot) this._stepPivot(dt);
 
     const I = this.input, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
-    const fx = -sy, fz = -cy, rx = cy, rz = -sy;
-    let wx = I.fwd * fx + I.side * rx, wz = I.fwd * fz + I.side * rz;
+    const fx = -sy, fz = -cy, rx = cy, rz = -sy, planted = !!this.pivot;   // planted on the pivot foot: no walking until it is done
+    let wx = planted ? 0 : I.fwd * fx + I.side * rx, wz = planted ? 0 : I.fwd * fz + I.side * rz;
     const wl = Math.hypot(wx, wz), wishMag = Math.min(1, wl);
     if (wl > 1e-4) { wx /= wl; wz /= wl; }
 
@@ -135,7 +148,7 @@ class Player {
     if (this.padCd <= 0) for (const p of this.pads) {
       if (Math.hypot(this.pos.x - p.x, this.pos.z - p.z) < p.r && this.pos.y < 0.6) {
         this.vel.y = p.vy; this.vel.x += p.fx; this.vel.z += p.fz; this.onGround = false; this.sliding = false;
-        this.padCd = 0.4; this.canBounce = true; this.onEvent('pad'); break;
+        this.padCd = 0.4; this.onEvent('pad'); break;
       }
     }
 
@@ -143,17 +156,9 @@ class Player {
     const target = (this.crouched ? PC.CROUCH : wantSprint ? PC.SPRINT : PC.WALK) * wishMag;
 
     if (this.onGround) {
-      this.airTime = 0; this.groundTime += dt; this.canBounce = true;
-      const wantJump = this.jumpBuf > 0 || I.jump;
-      let jumped = false;
-      if (wantJump) {
-        if (this.jumpBuf > 0 && this._tryMantle(fx, fz, true)) { this.jumpBuf = 0; return; }
-        jumped = true; this._jump();
-      }
-      if (!jumped) {
-        if (this.sliding) this._slideStep(dt, wx, wz, wishMag);
-        else { this._friction(dt, PC.FRICTION); if (wishMag > 0) this._accel(wx, wz, target, PC.ACCEL, dt); }
-      }
+      this.airTime = 0; this.groundTime += dt;
+      if (this.sliding) this._slideStep(dt, wx, wz, wishMag);
+      else { this._friction(dt, PC.FRICTION); if (wishMag > 0) this._accel(wx, wz, target, PC.ACCEL, dt); }
     } else {
       this.airTime += dt; this.groundTime = 0;
       this.vel.y -= PC.G * dt;
@@ -161,22 +166,16 @@ class Player {
       const sp = this.hspeed;
       if (sp > PC.SOFT_CAP) { const k = 1 - 0.8 * dt; this.vel.x *= k; this.vel.z *= k; }
 
-      // coyote jump
-      if (this.jumpBuf > 0 && this.coyote > 0 && this.vel.y <= 0.5) { this._jump(); }
       // tap strafe: quick strafe tap + view turn redirects momentum toward the view direction
-      else if (this.tapEdge > 0 && this.airTime < 1.0 && sp > 4.5) {
+      if (this.tapEdge > 0 && this.airTime < 1.0 && sp > 4.5) {
         const ang = this._angleTo(fx, fz), a = Math.abs(ang);
         if (a > 0.1 && a < 1.3) {
           this._rotateVel(Math.sign(ang) * Math.min(a, 0.55)); this.vel.x *= 0.985; this.vel.z *= 0.985;
           this.tapEdge = 0; if (a > 0.25) this.onEvent('tapstrafe');
         }
       }
-      // ledge mantle (auto when airborne and pushing into a ledge) / wall bounce
-      if ((I.fwd > 0 || I.jump || this.jumpBuf > 0) && this._tryMantle(wl > 1e-4 ? wx : fx, wl > 1e-4 ? wz : fz, false)) return;
-      if (this.jumpBuf > 0 && this.canBounce && this.airTime > 0.05) {
-        const n = this._wallNormal();
-        if (n) this._wallBounce(n);
-      }
+      // ledge mantle (auto when airborne and pushing into a ledge)
+      if (I.fwd > 0 && this._tryMantle(wl > 1e-4 ? wx : fx, wl > 1e-4 ? wz : fz, false)) return;
     }
 
     // speedCap: set by the game inside the ring so nobody can out-run the bot (0 = held in place, e.g. clinched)
@@ -187,15 +186,6 @@ class Player {
     this._move(dt);
     const lim = this.map.HALF - 0.5;
     this.pos.x = Math.max(-lim, Math.min(lim, this.pos.x)); this.pos.z = Math.max(-lim, Math.min(lim, this.pos.z));
-  }
-
-  _jump() {
-    const sp = this.hspeed;
-    this.vel.y = PC.JUMP; this.onGround = false; this.coyote = 0; this.jumpBuf = 0; this.lastJumpT = this.t;
-    if (this.sliding) {
-      this.sliding = false; this.vel.x *= 1.05; this.vel.z *= 1.05; this.onEvent('slidejump');
-    } else if (this.groundTime < 0.1 && sp > PC.SPRINT * 0.95) { this.bhop++; if (this.bhop >= 2) this.onEvent('bhop', this.bhop); }
-    else this.bhop = 0;
   }
 
   _startSlide() {
@@ -255,31 +245,13 @@ class Player {
     this.pos.y = m.sy + (m.ty - m.sy) * up;
     const f = Math.max(0, Math.min(1, (u - 0.3) / 0.7)), fe = f * f * (3 - 2 * f);
     this.pos.x = m.sx + (m.tx - m.sx) * fe; this.pos.z = m.sz + (m.tz - m.sz) * fe;
-    const glide = this.crouchEdge > 0 && this.t - this.lastJumpT < 0.22 && u > 0.4;
-    if (u >= 1 || glide) {
+    if (u >= 1) {
       this.pos.x = m.tx; this.pos.y = m.ty; this.pos.z = m.tz;
-      this.mantle = null; this.onGround = true; this.canBounce = true; this.mantleCd = 0.3; this.groundTime = 0;
+      this.mantle = null; this.onGround = true; this.mantleCd = 0.3; this.groundTime = 0;
       this.groundN = { x: 0, y: 1, z: 0 };
-      if (glide) {
-        const v = Math.min(12, Math.max(m.entry, 6) + 2.5);
-        this.vel.x = m.dx * v; this.vel.z = m.dz * v; this.crouched = true; this.sliding = true; this.slideCd = PC.SLIDE_CD;
-        this.crouchEdge = 0; this.onEvent('superglide');
-      } else {
-        const v = Math.max(3.5, Math.min(7.5, m.entry * 0.85));
-        this.vel.x = m.dx * v; this.vel.z = m.dz * v; this.onEvent('mantle');
-      }
+      const v = Math.max(3.5, Math.min(7.5, m.entry * 0.85));
+      this.vel.x = m.dx * v; this.vel.z = m.dz * v; this.onEvent('mantle');
     }
-  }
-
-  // ---------- wall bounce ----------
-  _wallBounce(n) {
-    this.canBounce = false; this.jumpBuf = 0;
-    const into = this.vel.x * n.x + this.vel.z * n.z;
-    if (into < 0) { this.vel.x -= 2 * into * n.x; this.vel.z -= 2 * into * n.z; }
-    this.vel.x += n.x * 4.5; this.vel.z += n.z * 4.5;
-    const sp = this.hspeed;
-    if (sp < 6.5) { const k = 6.5 / sp; this.vel.x *= k; this.vel.z *= k; }
-    this.vel.y = 7.4; this.bounceKick = 1; this.onEvent('wallbounce');
   }
 
   // ---------- integration + collisions ----------
@@ -296,7 +268,7 @@ class Player {
       if (v.y <= 0.01 && p.y - g.h <= 0.3) { // snapped to ground (also steps up)
         p.y = g.h; this.groundN = g.solid ? this.map.normalOf(g.solid) : { x: 0, y: 1, z: 0 };
       } else { // walked off an edge / over a ramp lip
-        this.onGround = false; this.coyote = 0.09;
+        this.onGround = false;
         const n = this.groundN;
         if (v.y <= 0.01 && n.y < 0.999) v.y = -(v.x * n.x + v.z * n.z) / n.y; // keep following the slope direction
         this.sliding = false;
@@ -320,7 +292,7 @@ class Player {
 
   _land(g) {
     const impact = -this.vel.y;
-    this.pos.y = g.h; this.vel.y = 0; this.onGround = true; this.groundTime = 0; this.canBounce = true;
+    this.pos.y = g.h; this.vel.y = 0; this.onGround = true; this.groundTime = 0;
     this.groundN = g.solid ? this.map.normalOf(g.solid) : { x: 0, y: 1, z: 0 };
     this.landDip = Math.min(0.28, impact * 0.012);
     if (this.input.crouch && this.hspeed >= PC.SLIDE_MIN && this.slideCd <= 0) { this.crouched = true; this._startSlide(); }

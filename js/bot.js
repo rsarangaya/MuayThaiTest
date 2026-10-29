@@ -37,7 +37,7 @@ function roundhouse(level) {
   const chamber = P({ yaw: 0.95, ty: 0.3, fwd: 0.25, ll: [0.25, -0.3, -0.5, 0.25], rl: [0.2, 1.15, 0, 1.8], ra: COVER, la: HIGHG.la, tr: L.tr * 0.6, tp: L.tp * 0.5, drop: 0.06 });
   return {
     type: level === 'low' ? 'legkick' : level === 'mid' ? 'midkick' : 'highkick', side: 'R', level,
-    dur: level === 'high' ? 1.3 : 1.15, active: [0.54, 0.68], reach: 2.05, dmg: level === 'low' ? 8 : level === 'mid' ? 10 : 12,
+    dur: level === 'high' ? 1.3 : 1.15, active: [0.54, 0.68], reach: 2.1, dmg: level === 'low' ? 8 : level === 'mid' ? 10 : 12,
     keys: [
       K(0, null),
       // diagonal step + pivot on the lead foot, rear arm starts swinging back, lead hand to the face
@@ -57,36 +57,36 @@ function roundhouse(level) {
 // bot walk speed (m/s); the player is capped to the same speed while inside the ring
 const BOT_SPEED = 2.6;
 const BMOVES = {
-  jab: { type: 'jab', side: 'L', level: 'high', dur: 0.45, active: [0.3, 0.5], reach: 1.75, dmg: 4,
+  jab: { type: 'jab', side: 'L', level: 'high', dur: 0.45, active: [0.3, 0.5], reach: 1.5, dmg: 4,
     keys: [K(0, null), K(0.3, P({ la: [1.45, 0.05, 0, 0.12], ty: 0.35, fwd: 0.12, tp: -0.15 }), 'i'), K(0.5, P({ la: [1.45, 0.05, 0, 0.12], ty: 0.35, fwd: 0.12, tp: -0.15 })), K(1, null, 'o')] },
-  cross: { type: 'cross', side: 'R', level: 'high', dur: 0.55, active: [0.32, 0.52], reach: 1.8, dmg: 7,
+  cross: { type: 'cross', side: 'R', level: 'high', dur: 0.55, active: [0.32, 0.52], reach: 1.55, dmg: 7,
     keys: [K(0, null), K(0.32, P({ ra: [1.45, -0.05, 0, 0.1], py: -0.1, ty: 0.55, rl: [-0.15, 0.1, 0, 0.15], drop: 0.06, fwd: 0.22, tp: -0.2, hp: -0.15 }), 'i'),
       K(0.52, P({ ra: [1.45, -0.05, 0, 0.1], py: -0.1, ty: 0.55, rl: [-0.15, 0.1, 0, 0.15], drop: 0.06, fwd: 0.22, tp: -0.2, hp: -0.15 })), K(1, null, 'o')] },
-  rhook: { type: 'hook', side: 'R', level: 'high', dur: 0.7, active: [0.38, 0.56], reach: 1.5, dmg: 9,
+  rhook: { type: 'hook', side: 'R', level: 'high', dur: 0.7, active: [0.38, 0.56], reach: 1.3, dmg: 9,
     keys: [K(0, null), K(0.3, P({ ra: [0.05, 1.5, 0, 1.55], ty: -0.15, fwd: 0.05, drop: 0.04 })), K(0.5, P({ ra: [0.05, 1.5, 0, 1.55], ty: 0.85, py: -0.05, fwd: 0.2, drop: 0.05 }), 'i'),
       K(0.62, P({ ra: [0.05, 1.5, 0, 1.55], ty: 1.0, py: 0.0, fwd: 0.2 }), 'o'), K(1, null)] },
-  lhook: { type: 'hook', side: 'L', level: 'high', dur: 0.62, active: [0.36, 0.54], reach: 1.5, dmg: 8,
+  lhook: { type: 'hook', side: 'L', level: 'high', dur: 0.62, active: [0.36, 0.54], reach: 1.3, dmg: 8,
     keys: [K(0, null), K(0.28, P({ la: [0.05, -1.5, 0, 1.55], ty: 0.4, fwd: 0.05 })), K(0.48, P({ la: [0.05, -1.5, 0, 1.55], ty: -0.5, fwd: 0.15 }), 'i'),
       K(0.6, P({ la: [0.05, -1.5, 0, 1.55], ty: -0.65, fwd: 0.15 }), 'o'), K(1, null)] },
   legkick: roundhouse('low'),
   midkick: roundhouse('mid'),
   highkick: roundhouse('high'),
   // lead-leg teep: knee drives up, foot pushes out, body leans back
-  teep: { type: 'teep', side: 'L', level: 'mid', dur: 0.85, active: [0.5, 0.66], reach: 2.1, dmg: 5,
+  teep: { type: 'teep', side: 'L', level: 'mid', dur: 0.85, active: [0.5, 0.66], reach: 2.2, dmg: 5,
     keys: [K(0, null), K(0.32, P({ ll: [1.5, -0.05, 0, 1.7], tp: 0.05, drop: 0.04, la: HIGHG.la, ra: HIGHG.ra }), 's'),
       K(0.52, P({ ll: [1.7, -0.05, 0, 0.1], tp: 0.38, hp: -0.05, fwd: 0.26, drop: 0.05, rl: [-0.3, 0.08, 0, 0.25], la: HIGHG.la, ra: HIGHG.ra }), 'i'), K(0.66, P({ ll: [1.7, -0.05, 0, 0.1], tp: 0.38, hp: -0.05, fwd: 0.26, drop: 0.05, rl: [-0.3, 0.08, 0, 0.25], la: HIGHG.la, ra: HIGHG.ra })), K(1, null)] },
   // rear-leg teep: the back knee drives up and the hips push through, bigger lean than the lead teep
-  rteep: { type: 'teep', side: 'R', level: 'mid', dur: 0.95, active: [0.52, 0.68], reach: 2.1, dmg: 6,
+  rteep: { type: 'teep', side: 'R', level: 'mid', dur: 0.95, active: [0.52, 0.68], reach: 2.2, dmg: 6,
     keys: [K(0, null), K(0.34, P({ rl: [1.5, 0.05, 0, 1.7], ll: [0.1, -0.05, 0, 0.2], tp: 0.05, drop: 0.04, la: HIGHG.la, ra: HIGHG.ra }), 's'),
       K(0.54, P({ rl: [1.7, 0.05, 0, 0.1], ll: [0.1, -0.05, 0, 0.2], tp: 0.42, hp: -0.05, fwd: 0.34, drop: 0.05, la: HIGHG.la, ra: HIGHG.ra }), 'i'),
       K(0.68, P({ rl: [1.7, 0.05, 0, 0.1], ll: [0.1, -0.05, 0, 0.2], tp: 0.42, hp: -0.05, fwd: 0.34, drop: 0.05, la: HIGHG.la, ra: HIGHG.ra })), K(1, null)] },
   // body shots: same punches thrown lower, bot dips and leans in
-  jabB: { type: 'jab', side: 'L', level: 'mid', dur: 0.47, active: [0.3, 0.5], reach: 1.6, dmg: 5,
+  jabB: { type: 'jab', side: 'L', level: 'mid', dur: 0.47, active: [0.3, 0.5], reach: 1.4, dmg: 5,
     keys: [K(0, null), K(0.3, P({ la: [1.2, 0.05, 0, 0.15], ty: 0.3, fwd: 0.12, tp: -0.4, drop: 0.14, hp: -0.25 }), 'i'), K(0.5, P({ la: [1.2, 0.05, 0, 0.15], ty: 0.3, fwd: 0.12, tp: -0.4, drop: 0.14, hp: -0.25 })), K(1, null, 'o')] },
-  crossB: { type: 'cross', side: 'R', level: 'mid', dur: 0.57, active: [0.32, 0.52], reach: 1.65, dmg: 8,
+  crossB: { type: 'cross', side: 'R', level: 'mid', dur: 0.57, active: [0.32, 0.52], reach: 1.45, dmg: 8,
     keys: [K(0, null), K(0.32, P({ ra: [1.2, -0.05, 0, 0.12], py: -0.1, ty: 0.5, rl: [-0.15, 0.1, 0, 0.15], drop: 0.16, fwd: 0.22, tp: -0.45, hp: -0.25 }), 'i'),
       K(0.52, P({ ra: [1.2, -0.05, 0, 0.12], py: -0.1, ty: 0.5, rl: [-0.15, 0.1, 0, 0.15], drop: 0.16, fwd: 0.22, tp: -0.45, hp: -0.25 })), K(1, null, 'o')] },
-  lhookB: { type: 'hook', side: 'L', level: 'mid', dur: 0.64, active: [0.36, 0.54], reach: 1.4, dmg: 9,
+  lhookB: { type: 'hook', side: 'L', level: 'mid', dur: 0.64, active: [0.36, 0.54], reach: 1.25, dmg: 9,
     keys: [K(0, null), K(0.28, P({ la: [0.4, -1.4, 0, 1.5], ty: 0.4, fwd: 0.05, drop: 0.12, tp: -0.3 })), K(0.48, P({ la: [0.4, -1.4, 0, 1.5], ty: -0.5, fwd: 0.15, drop: 0.14, tp: -0.4 }), 'i'),
       K(0.6, P({ la: [0.4, -1.4, 0, 1.5], ty: -0.65, fwd: 0.15, drop: 0.14, tp: -0.4 }), 'o'), K(1, null)] },
 };
@@ -107,11 +107,16 @@ const BKO = { dur: 0.8, hold: true, keys: [K(0, null), K(1, P({ tilt: 1.5, drop:
 const BHOLD = {
   block: P({ la: [0.78, 0.28, 0, 2.7], ra: [0.78, -0.28, 0, 2.7], tp: -0.28, hp: -0.3, drop: 0.08 }),
   long: P({ la: [1.38, 0.05, 0, 0.45], ra: [0.62, -0.14, 0, 2.7], tp: -0.05 }),
+  parry: P({ la: [1.0, 0.1, 0, 1.9], ra: [0.7, -0.2, 0, 2.6], tp: -0.1 }),      // lead hand flicks out to push the punch aside
   evade: P({ tp: 0.3, hp: 0.1, la: [0.6, 0.15, 0, 2.6], ra: [0.6, -0.15, 0, 2.6] }),
 };
 const BCROUCH = P({ drop: 0.28, tp: -0.3, hp: -0.4, la: HIGHG.la, ra: HIGHG.ra });
 // moves only the online opponent uses: a knee (the plum-knee pose, guard up)
 BMOVES.knee = Object.assign({ type: 'knee', side: 'R', level: 'mid', reach: 1.0, dmg: 10, active: [0.4, 0.55] }, BCL.knee);
+// close-range elbow: the right hook's arm path, shorter and faster
+BMOVES.elbow = Object.assign({}, BMOVES.rhook, { type: 'elbow', dur: 0.55, active: [0.36, 0.52], reach: 0.9, dmg: 11 });
+// elbow from inside the plum: guard hand keeps hold, the other arm whips across
+BCL.elbow = { dur: 0.6, keys: [K(0, null), K(0.4, P({ la: [1.8, 0.15, 0, 1.2], ra: [0.05, 1.5, 0, 1.55], ty: 0.7, tp: -0.3, hp: -0.2, drop: 0.05, fwd: 0.12 }), 'i'), K(0.55, P({ la: [1.8, 0.15, 0, 1.2], ra: [0.05, 1.5, 0, 1.55], ty: 0.85, tp: -0.3, hp: -0.2, drop: 0.05, fwd: 0.12 })), K(1, null)] };
 const BCHECK = { low: [0.7, 1.0], mid: [1.15, 1.6], high: [1.5, 1.9] }; // [hipPitch, knee]
 function checkPose(side, level) {
   const [hp, kn] = BCHECK[level], o = { la: HIGHG.la, ra: HIGHG.ra, tp: -0.08, hp: -0.2, drop: 0.0 };
@@ -124,7 +129,8 @@ const COMBOS = [
   { w: 3, seq: ['jab', 'cross', 'legkick'] }, { w: 2, seq: ['lhook', 'cross', 'midkick'] }, { w: 2, seq: ['teep', 'cross'] },
   { w: 2, seq: ['jab', 'highkick'] }, { w: 3, seq: ['midkick'] }, { w: 3, seq: ['legkick'] }, { w: 1.5, seq: ['highkick'] },
   { w: 2, seq: ['teep'] }, { w: 2, seq: ['cross', 'rhook'] },
-  { w: 1.3, seq: ['plum'] }, { w: 1.5, seq: ['rteep'] }, { w: 2, seq: ['jabB', 'crossB'] }, { w: 2, seq: ['jab', 'lhookB', 'cross'] }, { w: 2, seq: ['jabB', 'cross', 'midkick'] },
+  { w: 2.2, seq: ['plum'] }, { w: 1.5, seq: ['rteep'] },
+  { w: 2, seq: ['knee'], close: 1 }, { w: 2, seq: ['elbow'], close: 1 }, { w: 1.5, seq: ['elbow', 'knee'], close: 1 }, { w: 1.5, seq: ['knee', 'elbow'], close: 1 }, { w: 2, seq: ['jabB', 'crossB'] }, { w: 2, seq: ['jab', 'lhookB', 'cross'] }, { w: 2, seq: ['jabB', 'cross', 'midkick'] },
 ];
 const PUNCH = new Set(['jab', 'cross', 'hook', 'elbow']);
 
@@ -282,7 +288,7 @@ class Bot {
   }
   reset() {
     const r = this.ring; this.x = r.cx; this.z = r.cz - 2; this.y = r.y;
-    this.hp = 100; this.ko = false; this.koT = 0; this.t = 0; this.facing = 0;
+    this.hp = 100; this.ko = false; this.down = false; this.koT = 0; this.t = 0; this.facing = 0;
     this.vx = 0; this.vz = 0; this.kbx = 0; this.kbz = 0;
     this.attack = null; this.queue = []; this.cool = 1.2; this.gap = 0; this.def = null; this.react = null;
     this.stun = 0; this.strafe = Math.random() < 0.5 ? 1 : -1; this.strafeT = 2; this.evadeT = 0; this.speed = 0;
@@ -295,7 +301,7 @@ class Bot {
 
   // --- being attacked ---
   notice(type, side, level) {
-    if (this.ko || this.locked || this.stun > 0 || (this.attack && this.f.u < 0.35)) return;
+    if (this.ko || this.down || this.locked || this.stun > 0 || (this.attack && this.f.u < 0.35)) return;
     // reads the pattern: the more often the player repeats a strike, the more likely the bot is ready for it
     this.seen = this.seen || []; this.seen.push(type); if (this.seen.length > 6) this.seen.shift();
     const repeats = this.seen.filter(s => s === type).length - 1;
@@ -304,16 +310,21 @@ class Bot {
     let plan = null;
     // spammed or slow strikes get cut off: step in with a quick jab while the player is still mid-swing (lands as a critical)
     const spam = this.seen.length >= 4 && this.seen.slice(-4).every(s => s === 'jab' || s === 'cross');
-    if (this.lastDist < 1.9 && (type !== 'jab') && this.stam > 15 && Math.random() < (spam ? 0.7 : 0.22) * this.skill) plan = { type: 'cut' };
-    else if (spam && Math.random() < 0.5) plan = { type: Math.random() < 0.6 ? 'block' : 'evade' };
+    // a kick or teep leaves the player on one leg: sometimes a low kick takes the standing leg (knockdown)
+    if ((type === 'teep' || type.endsWith('kick')) && this.lastDist < 2.0 && this.stam > 15 && Math.random() < 0.2 * this.skill) plan = { type: 'cut', seq: ['legkick'] };
+    else if (this.lastDist < 1.9 && (type !== 'jab') && this.stam > 15 && Math.random() < (spam ? 0.7 : 0.22) * this.skill) plan = { type: 'cut' };
+    else if (spam && Math.random() < 0.5) plan = { type: Math.random() < 0.6 ? 'parry' : 'evade' };
     if (plan) { this.react = { at: this.t + 0.04 + Math.random() * 0.05 + this.reactAdd, plan }; return; }
     // matching answers: block hooks, long guard / block the straights, check the kick at its own height, lean out of high kicks
-    if (type === 'jab' || type === 'cross') plan = r < 0.45 ? { type: 'block' } : r < 0.75 ? { type: 'long' } : r < 0.95 ? { type: 'evade' } : null;
-    else if (type === 'hook') plan = r < 0.7 ? { type: 'block' } : r < 0.95 ? { type: 'evade' } : null;
+    // (new guard rules: high guard stops head hooks / kicks only; straights need a timed parry or a long guard from far away; body shots are open)
+    const far = this.lastDist >= LG_RANGE + 0.2;
+    if (type === 'jab' || type === 'cross') plan = level !== 'high' ? (r < 0.55 ? { type: 'parry' } : r < 0.8 ? { type: 'evade' } : null)
+      : r < 0.4 ? { type: 'parry' } : r < 0.75 ? { type: far ? 'long' : 'parry' } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'hook') plan = level !== 'high' ? (r < 0.3 ? { type: 'evade' } : null) : r < 0.7 ? { type: 'block' } : r < 0.95 ? { type: 'evade' } : null;
     else if (type === 'legkick') plan = r < 0.75 ? { type: 'check', level: 'low', side: mySide } : r < 0.92 ? { type: 'evade' } : null;
-    else if (type === 'midkick') plan = r < 0.62 ? { type: 'check', level: 'mid', side: mySide } : r < 0.82 ? { type: 'block' } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'midkick') plan = r < 0.62 ? { type: 'check', level: 'mid', side: mySide } : r < 0.82 ? { type: 'evade' } : r < 0.95 ? { type: 'evade' } : null;
     else if (type === 'highkick') plan = r < 0.6 ? { type: 'block' } : r < 0.8 ? { type: 'check', level: 'high', side: mySide } : r < 0.95 ? { type: 'evade' } : null;
-    else if (type === 'teep') plan = r < 0.45 ? { type: 'long' } : r < 0.8 ? { type: 'check', level: 'mid', side: 'L' } : r < 0.95 ? { type: 'evade' } : null;
+    else if (type === 'teep') plan = r < 0.2 ? { type: 'parry' } : r < 0.75 ? { type: 'check', level: 'mid', side: 'L' } : r < 0.95 ? { type: 'evade' } : null;
     if (plan) this.react = { at: this.t + 0.05 + Math.random() * 0.06 + (1 - this.skill) * 0.15 + this.reactAdd + (tired ? 0.08 : 0), plan };
   }
   // pick a counter-attack that fits what was just defended (or whiffed)
@@ -329,7 +340,7 @@ class Bot {
   _wantCounter(type, res) {
     if (Math.random() < 0.8 * this.skill && this.stam > 12) { this._counter = this._counterFor(type, res); this._counterUntil = this.t + 1.2; this.cool = Math.min(this.cool, 0.05); }
   }
-  // the player leaned back / slipped: a read bot hits what that evasion can't avoid (body + leg shots after a lean, hooks after a slip)
+  // the player leaned back / slipped / pivoted: a read bot hits what that evasion can't avoid (body + leg shots after a lean, hooks after a slip or pivot)
   playerEvade(kind, dist) {
     if (this.mode !== 'spar' || this.ko || this.locked || this.attack || this.stun > 0 || this.def || dist > 2.3 || this.stam < 15) return;
     if (Math.random() > 0.55 * this.skill) return;
@@ -339,32 +350,40 @@ class Bot {
   }
   _defend(plan) {
     if (this.attack) return;
-    if (plan.type === 'cut') { this._counter = { seq: Math.random() < 0.5 ? ['jab', 'cross'] : ['jab', 'lhook'], plain: true }; this._counterUntil = this.t + 0.5; this.cool = 0; return; }
-    this.def = Object.assign({ until: this.t + 0.6 }, plan);
+    if (plan.type === 'cut') { this._counter = { seq: plan.seq || (Math.random() < 0.5 ? ['jab', 'cross'] : ['jab', 'lhook']), plain: true }; this._counterUntil = this.t + 0.5; this.cool = 0; return; }
+    this.def = Object.assign({ until: this.t + 0.6, gap: this.lastDist }, plan);
+    if (plan.type === 'parry') this.def.until = this.t + 0.35;
     if (plan.type === 'evade') { this.evadeT = 0.32; this.def.until = this.t + 0.4; }
     this.f.base = plan.type === 'check' ? checkPose(plan.side, plan.level) : BHOLD[plan.type];
   }
   // atk: { type, side (attacker's limb), level, reach, dmg, dist }
   receive(atk) {
-    if (this.ko) return 'miss';
-    if (atk.dist - this.f.cur[22] > atk.reach + 0.45) { if (!this.attack && !this.locked) this._wantCounter(atk.type, 'miss'); return 'miss'; }  // whiffed: punish it
+    if (this.ko || this.down) return 'miss';
+    if (atk.dist - this.f.cur[22] > atk.reach + 0.15) { if (!this.attack && !this.locked) this._wantCounter(atk.type, 'miss'); return 'miss'; }  // whiffed: punish it
     const mySide = atk.side === 'L' ? 'R' : atk.side === 'R' ? 'L' : 'C', d = this.def, type = atk.type;
-    let res = 'hit';
-    if (d) {
-      if (d.type === 'block' && (PUNCH.has(type) || type === 'highkick' || type === 'midkick' || type === 'knee')) res = 'blocked';
-      else if (d.type === 'long' && (type === 'jab' || type === 'cross' || type === 'teep')) res = 'blocked';
-      else if (d.type === 'check' && d.level === atk.level && (type === 'legkick' || type === 'midkick' || type === 'highkick' || type === 'teep' || type === 'knee')) res = 'checked';
-      else if (d.type === 'evade' && Math.random() < 0.5) res = 'dodged';
-    } else if (PUNCH.has(type) && !this.attack && Math.random() < 0.32) res = 'blocked'; // guard held up in stance
-    this.lastCrit = null; this.lastDmg = atk.dmg;
-    if (res === 'hit') {                                        // caught mid-swing = critical; so is a hit right after the player's own defence
-      let dmg = atk.dmg;
-      if (this.attack) { dmg *= 1.6; this.lastCrit = 'INTERRUPTED'; } else if (atk.counter) { dmg *= 1.5; this.lastCrit = 'PERFECT COUNTER'; }
-      if (atk.cap) dmg = Math.min(dmg, atk.cap);                  // combo bonus x crit can't stack past x2
-      this.lastDmg = dmg; this._hurt(atk, dmg, this.lastCrit || (dmg < 5.5 && Math.random() < 0.45 ? 'light' : 'flinch'));
+    let res = 'hit', gm = 1, gtag = null;
+    if (d && d.type === 'check' && d.level === atk.level && (type === 'legkick' || type === 'midkick' || type === 'highkick' || type === 'teep' || type === 'knee')) res = 'checked';
+    else if (d && d.type === 'evade' && Math.random() < 0.5) res = 'dodged';
+    else {                                                      // guard / parry / default stance (combat.js defend)
+      const busy = { L: false, R: false }, a = this.attack;
+      if (a && PUNCH.has(a.def.type)) busy[a.def.side] = true;
+      const head = atk.level === 'high', parrying = d && d.type === 'parry';
+      const g = defend(atk, {
+        guard: !this.ko && this.stam >= 15 && (parrying ? head : (d && d.type === 'block') || (this.mode === 'guard' && !a)),
+        long: !!d && d.type === 'long', lgGap: d && d.gap != null ? d.gap : 0,
+        busy, parry: parrying && Math.random() < 0.15 + 0.8 * this.skill ? 'active' : parrying ? 'open' : null, parryAge: 0,
+      });
+      res = g.res; gm = g.mul; gtag = g.tag;
     }
-    else if (res === 'blocked') { this._hurt(atk, atk.dmg * 0.15, null); this.kbx += atk.dx * 0.8; this.kbz += atk.dz * 0.8; this.stam = Math.min(100, this.stam + 5); }
+    this.lastCrit = null; atk = Object.assign({}, atk, { dmg: atk.dmg * gm, cap: atk.cap && atk.cap * gm }); this.lastDmg = atk.dmg;
+    if (res === 'hit') {                                        // caught mid-swing = critical; so is a hit right after the player's own defence
+      const a = this.attack, m = strikeMods(atk, { swing: a ? { type: a.def.type, u: this.f.u, reach: a.def.reach, gap: atk.dist - this.f.cur[22] } : null });
+      const dmg = m.dmg, how = m.how; this.lastCrit = m.tag || gtag;
+      this.lastDmg = dmg; this._hurt(atk, dmg, this.lastCrit || (dmg < 5.5 && Math.random() < 0.45 ? 'light' : 'flinch'), how);
+    }
+    else if (res === 'blocked') { this._hurt(atk, atk.dmg * 0.15, null); this.kbx += atk.dx * 0.8; this.kbz += atk.dz * 0.8; this.stam = Math.min(100, this.stam + 3); }
     else if (res === 'checked') { this.kbx += atk.dx * 0.5; this.kbz += atk.dz * 0.5; }
+    else if (res === 'parried') { this.stam = Math.min(100, this.stam + 6); }
     if (res !== 'hit' && !this.locked) {                       // a successful defence ends the guard early and opens a counter
       if (this.def) this.def.until = Math.min(this.def.until, this.t + 0.12);
       else this.def = { type: 'block', until: this.t + 0.12 };
@@ -372,9 +391,13 @@ class Bot {
     }
     return res;
   }
-  _hurt(atk, dmg, anim) {
+  // how: 'stop' = the swing is knocked out, 'down' = knockdown; otherwise a swing in progress is not interrupted
+  _hurt(atk, dmg, anim, how) {
     if (!this.noDamage) this.hp = Math.max(0, this.hp - dmg);
     this.f.flash = anim && anim !== 'light' ? 1 : 0.4;
+    if (atk.type === 'teep' && anim) { this.kbx += atk.dx * 3; this.kbz += atk.dz * 3; }   // a teep creates distance
+    if (how === 'down' && this.hp > 0) { this.knockdown(atk); return; }
+    if (this.attack && how !== 'stop' && anim !== 'light') { this.kbx += atk.dx * 0.8; this.kbz += atk.dz * 0.8; anim = null; }
     if (anim === 'light') { this.hits.push(this.t); this.hits = this.hits.filter(h => this.t - h < 2.5); anim = null; }   // a jab-weight shot doesn't break its stance
     if (anim) {
       const crit = anim !== 'flinch';
@@ -388,9 +411,17 @@ class Bot {
     if (this.hp <= 0 && !this.ko) { this.ko = true; this.koT = 0; this.attack = null; this.queue.length = 0; this.def = null; this.f.base = STANCE; this.f.play(BKO); this.onKO(); }
   }
 
+  // swept off its standing leg: a short knockdown with no count (the KO / 8 count is the hp = 0 one)
+  knockdown(atk) {
+    if (this.ko || this.down) return;
+    this.down = true; this.attack = null; this.queue.length = 0; this.def = null; this.react = null; this._counter = null; this.hits.length = 0;
+    this.f.base = STANCE; this.stun = 2.2; this.f.play(BKO);
+    this.kbx += atk.dx * 2; this.kbz += atk.dz * 2;
+  }
+
   // the player checked / blocked the bot's attack: knock it off balance
   stagger() {
-    if (this.ko) return;
+    if (this.ko || this.down) return;
     this.attack = null; this.queue.length = 0; this.def = null; this.react = null; this.f.base = STANCE;
     this.stun = 0.8; this.cool = 0.6; this.f.play(BSTAGGER);
   }
@@ -403,12 +434,13 @@ class Bot {
       if (dist <= need + 0.25) ok.push(c);
     }
     if (!ok.length) return null;
-    let sum = 0; for (const c of ok) sum += c.w; let r = Math.random() * sum;
-    for (const c of ok) { r -= c.w; if (r <= 0) return c; }
+    const wt = c => c.w * (dist < 1.4 && (c.close || c.seq[0] === 'plum') ? 3 : 1);   // up close it reaches for the plum, knees and elbows
+    let sum = 0; for (const c of ok) sum += wt(c); let r = Math.random() * sum;
+    for (const c of ok) { r -= wt(c); if (r <= 0) return c; }
     return ok[0];
   }
   _launch(name, player) {
-    const def = BMOVES[name]; this.attack = { name, def, fired: false, counter: !!this.comboCounter }; this.comboCounter = false; this.f.play(def);
+    const def = BMOVES[name]; this.attack = { name, def, fired: false, counter: !!this.comboCounter, d0: this.lastDist }; this.comboCounter = false; this.f.play(def);
     this.stam = Math.max(0, this.stam - (def.dmg * 1.4 + 2));
     this.f.base = STANCE; this.def = null;
     this.onTelegraph({ type: def.type, side: def.side, level: def.level, name });
@@ -453,10 +485,11 @@ class Bot {
       return;
     }
     const dx = player.pos.x - this.x, dz = player.pos.z - this.z, dist = Math.hypot(dx, dz); this.lastDist = dist;
-    const engaged = this.inRing(player.pos.x, player.pos.z, 4) && !this.ko;
+    const engaged = this.inRing(player.pos.x, player.pos.z, 0.6) && player.pos.y < ring.y + 0.9 && !this.ko;   // player outside the ropes: wait in the far corner
+    const cornerX = ring.cx - ring.hx + 1, cornerZ = ring.cz - ring.hz + 1, cornerD = Math.hypot(cornerX - this.x, cornerZ - this.z);   // opposite the entrance (the gate is the +x +z corner)
 
-    // facing
-    let tx = dx, tz = dz; if (!engaged) { tx = ring.cx - this.x; tz = ring.cz + 5 - this.z; }
+    // facing: walk to the corner looking where it is going, then watch the player from there
+    let tx = dx, tz = dz; if (!engaged && cornerD > 0.4) { tx = cornerX - this.x; tz = cornerZ - this.z; }
     const want = Math.atan2(-tx, -tz); let diff = want - this.facing; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     const turn = (this.attack && f.u > 0.2 ? 1.5 : 7) * dt; this.facing += Math.max(-turn, Math.min(turn, diff));
 
@@ -468,6 +501,7 @@ class Bot {
       if (this.koT > 3.6) { this.reset(); }
     } else {
       this.stun = Math.max(0, this.stun - dt); this.cool -= dt; this.evadeT = Math.max(0, this.evadeT - dt);
+      if (this.down && this.stun <= 0) { this.down = false; f.anim = null; f.base = STANCE; this.cool = 0.9; }   // back on its feet
       const nx = dist > 0.01 ? dx / dist : 0, nz = dist > 0.01 ? dz / dist : -1;
       if (this.react && this.t >= this.react.at) { this._defend(this.react.plan); this.react = null; }
       if (this.def && this.t >= this.def.until) { this.def = null; f.base = STANCE; this.cool = Math.min(this.cool, this._counter ? 0.05 : 0.25 + Math.random() * 0.35); }
@@ -476,7 +510,7 @@ class Bot {
         const a = this.attack;
         if (!a.fired && f.u >= a.def.active[0]) {
           a.fired = true;
-          this.onActive({ type: a.def.type, side: a.def.side, level: a.def.level, reach: a.def.reach, dmg: a.def.dmg, name: a.name, counter: a.counter });
+          this.onActive({ type: a.def.type, side: a.def.side, level: a.def.level, reach: a.def.reach, dmg: a.def.dmg, name: a.name, counter: a.counter, startDist: a.d0 });
         }
         if (!f.playing) {
           this.attack = null; this.gap = 0.06 + Math.random() * 0.14;
@@ -486,12 +520,12 @@ class Bot {
         if (this.queue.length) {
           this.gap -= dt;
           if (this.gap <= 0) {
-            const nxt = this.queue.shift(), need = BMOVES[nxt].reach + 0.5;
+            const nxt = this.queue.shift(), need = BMOVES[nxt].reach + 0.15;
             if (engaged && dist <= need) this._launch(nxt, player); else this.queue.length = 0;
           }
         } else if (engaged && this.cool <= 0) {
           let c = null; this.comboCounter = false;
-          if (this._counter) { const ct = this._counter; this._counter = null; if (this.t < this._counterUntil && dist <= BMOVES[ct.seq[0]].reach + 0.5) { c = ct; this.comboCounter = !ct.plain; } }
+          if (this._counter) { const ct = this._counter; this._counter = null; if (this.t < this._counterUntil && dist <= BMOVES[ct.seq[0]].reach + 0.15) { c = ct; this.comboCounter = !ct.plain; } }
           if (!c) c = dist < 2.4 && this.stam > 8 ? this._pickCombo(dist) : null;
           if (c && this.mode === 'drill') c = { seq: [c.seq[0]] };      // drill: one telegraphed strike at a time
           if (c) { this.queue = c.seq.slice(); this.gap = 0; }
@@ -503,9 +537,9 @@ class Bot {
           if (dist > 1.95) { mvx = nx * BOT_SPEED; mvz = nz * BOT_SPEED; }
           else if (dist < 1.25) { mvx = -nx * BOT_SPEED; mvz = -nz * BOT_SPEED; }
           else { mvx = -nz * this.strafe * 1.8; mvz = nx * this.strafe * 1.8; }
-        } else if (!engaged) { // idle: drift back to the ring centre
-          const cx = ring.cx - this.x, cz = ring.cz - 3 - this.z, cd = Math.hypot(cx, cz);
-          if (cd > 1) { mvx = cx / cd * 1.5; mvz = cz / cd * 1.5; }
+        } else if (!engaged && !this.queue.length && cornerD > 0.15) { // player is out of the ring: go to the opposite corner
+          const sp = Math.min(2.2, cornerD * 3);
+          mvx = (cornerX - this.x) / cornerD * sp; mvz = (cornerZ - this.z) / cornerD * sp;
         }
       }
       if (this.evadeT > 0) { mvx = -nx * 4.5; mvz = -nz * 4.5; }

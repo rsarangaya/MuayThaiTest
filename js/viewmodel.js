@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // First-person fighter viewmodel: two gloved arms + two bare shins/feet, driven by keyframe tracks.
 // Pose = [x, y, z, rx, ry, rz] in camera space (camera looks down -Z). A limb's mesh extends from its
 // "end" (glove / foot) back along local +Z toward the body. Arms use the authored rotation; LEGS are
@@ -38,7 +38,7 @@ const other = s => (s === 'L' ? 'R' : 'L');
 function roundhouse(o) {
   const yi = o.yi, yc = o.yc;
   return {
-    limb: 'leg', dur: o.dur, active: [0.52, 0.66], reach: 1.9, impulse: o.impulse, step: 2.4,
+    limb: 'leg', dur: o.dur, active: [0.52, 0.66], reach: 2.1, impulse: o.impulse, step: 2.4,
     tracks: ({ side }) => ({
       // knee leads up and forward, foot tucked behind it (reference: high chamber before the shin whips out)
       leg: [K(0, null), K(0.2, [0.5, -0.95, 0.2, 0, 0, 0]), K(0.38, [0.95, yc - 0.1, 0.1, 0, 0, 0]),
@@ -62,7 +62,7 @@ function roundhouse(o) {
 
 const MOVES = {
   jab: {
-    limb: 'hand', fixedSide: 'L', dur: 0.28, active: [0.3, 0.5], reach: 1.6, impulse: 2.2,
+    limb: 'hand', fixedSide: 'L', dur: 0.28, active: [0.3, 0.5], reach: 1.5, impulse: 2.2,
     tracks: () => ({
       hand: [K(0, null), K(0.34, [-0.05, -0.06, -1.1, 0.12, -0.04, 0], 'i'), K(0.5, [-0.05, -0.06, -1.1, 0.12, -0.04, 0]), K(1, GUARD_L, 'o')],
       gArm: [K(0, null), K(0.25, TIGHT_R), K(0.8, TIGHT_R), K(1, GUARD_R)],
@@ -70,7 +70,7 @@ const MOVES = {
     }),
   },
   cross: {
-    limb: 'hand', fixedSide: 'R', dur: 0.38, active: [0.34, 0.5], reach: 1.65, impulse: 3.4,
+    limb: 'hand', fixedSide: 'R', dur: 0.38, active: [0.34, 0.5], reach: 1.55, impulse: 3.4,
     tracks: () => ({
       // thrown straight from the guard, no wind-up
       hand: [K(0, null), K(0.38, [0.04, -0.04, -1.15, 0.1, 0.05, 0], 'i'), K(0.58, [0.04, -0.04, -1.15, 0.1, 0.05, 0]), K(1, GUARD_R, 'o')],
@@ -80,7 +80,7 @@ const MOVES = {
     }),
   },
   hook: {
-    limb: 'hand', dur: 0.46, active: [0.3, 0.5], reach: 1.4, impulse: 3.6,
+    limb: 'hand', dur: 0.46, active: [0.3, 0.5], reach: 1.3, impulse: 3.6,
     tracks: ({ side }) => ({
       // arcs out from the guard (elbow up and wide, never pulled back) and sweeps across the target
       hand: [K(0, null), K(0.2, [0.58, -0.14, -0.66, 0.25, 0.95, 0], 'o'), K(0.38, [0.12, -0.04, -0.85, 0.12, 0.6, 0], 'i'), K(0.58, [-0.34, -0.04, -0.74, 0.12, 0.34, 0], 'o'), K(1, GUARD_R)],
@@ -93,7 +93,7 @@ const MOVES = {
   highkick: roundhouse({ dur: 1.28, yi: 0.1, yc: -0.15, pitch: 0.07, roll: 0.13, impulse: 4.0 }),
   // Elbow: short horizontal slash. Hand is pulled tight beside the face and the elbow whips across, no wind-up
   elbow: {
-    limb: 'hand', dur: 0.4, active: [0.3, 0.46], reach: 0.9, impulse: 3.0, step: 1.2,
+    limb: 'hand', dur: 0.4, active: [0.3, 0.46], reach: 0.85, impulse: 3.0, step: 1.2,
     tracks: () => ({
       hand: [K(0, null), K(0.18, [0.3, 0.02, -0.34, 0.75, 1.15, 0.2], 'o'), K(0.4, [-0.22, 0.0, -0.5, 0.6, 0.15, -0.1], 'i'),
         K(0.56, [-0.3, 0.0, -0.5, 0.6, 0.0, -0.1]), K(1, GUARD_R, 'o')],
@@ -103,7 +103,7 @@ const MOVES = {
   },
   // Knee: both hands drag the head down (clinch) while the hips drive forward and the knee rises through the target
   knee: {
-    limb: 'leg', dur: 0.85, active: [0.42, 0.6], reach: 1.2, impulse: 4.4, step: 1.6,
+    limb: 'leg', dur: 0.85, active: [0.42, 0.6], reach: 1.1, impulse: 4.4, step: 1.6,
     tracks: () => ({
       leg: [K(0, null), K(0.25, [0.2, -0.62, 0.05, 0, 0, 0]), K(0.46, [0.1, -0.28, -0.5, 0, 0, 0], 'i'),
         K(0.62, [0.1, -0.24, -0.5, 0, 0, 0]), K(0.84, [0.2, -0.7, 0.0, 0, 0, 0]), K(1, LEG_HIDE_R)],
@@ -114,7 +114,7 @@ const MOVES = {
   },
   // Teep: knee drives up, hip thrusts forward and the ball of the foot pushes out; torso leans back
   teep: {
-    limb: 'leg', dur: 0.98, active: [0.5, 0.66], reach: 2.0, impulse: 3.2, step: 0,
+    limb: 'leg', dur: 0.98, active: [0.5, 0.66], reach: 2.2, impulse: 3.2, step: 0,
     tracks: () => ({
       leg: [K(0, null), K(0.28, [0.2, -0.5, -0.12, 0, 0, 0]), K(0.44, [0.14, -0.3, -0.45, 0, 0, 0]),
         K(0.56, [0.1, -0.04, -1.12, 0, 0, 0], 'i'), K(0.7, [0.1, -0.04, -1.12, 0, 0, 0]), K(0.86, [0.18, -0.62, -0.2, 0, 0, 0]), K(1, LEG_HIDE_R)],
@@ -150,8 +150,11 @@ const CHECK_FOOT_Y = { low: -0.55, mid: -0.3, high: -0.02 };
 function holdPoses(h) {
   const out = {};
   if (h.longGuard) { out.LH = [-0.1, -0.06, -1.0, 0.14, -0.06, 0]; out.RH = [0.17, -0.1, -0.42, 0.6, 0.2, 0]; }
-  if (h.block === 'L') { out.LH = [-0.17, 0.02, -0.4, 1.0, -0.12, 0.2]; out.RH = [0.12, -0.14, -0.4, 0.7, 0.18, 0]; }
-  if (h.block === 'R') { out.RH = [0.17, 0.02, -0.4, 1.0, 0.12, -0.2]; out.LH = [-0.12, -0.14, -0.4, 0.7, -0.18, 0]; }
+  if (h.guard) {                                                    // high guard: both gloves at the temples; hands sag when tired
+    if (h.sag) { out.LH = [-0.17, -0.2, -0.4, 0.55, -0.1, 0.08]; out.RH = [0.17, -0.2, -0.4, 0.55, 0.1, -0.08]; }
+    else { out.LH = [-0.14, 0.0, -0.4, 0.95, -0.14, 0.12]; out.RH = [0.14, 0.0, -0.4, 0.95, 0.14, -0.12]; }
+  }
+  if (h.parry) out.LH = [-0.06, -0.08, -0.85, 0.3, 0.02, 0];        // lead hand flicks out to push the punch aside
   if (h.check) { // knee up, shin turned out to catch the kick
     const L = h.checkSide === 'L';
     out[L ? 'LL' : 'RL'] = [L ? -0.26 : 0.26, CHECK_FOOT_Y[h.check], -0.5, 0, 0, 0];
@@ -218,7 +221,7 @@ class ViewModel {
     for (const k in this.limbs) this.root.add(this.limbs[k]);
 
     this.cur = { LH: GUARD_L.slice(), RH: GUARD_R.slice(), LL: LEG_HIDE_L.slice(), RL: LEG_HIDE_R.slice() };
-    this.holds = { block: null, longGuard: false, check: null, checkSide: 'R' };
+    this.holds = { guard: false, sag: false, parry: false, longGuard: false, check: null, checkSide: 'R' };
     this.action = null; this.pending = null; this.name = '';
     // body motion the main loop applies to the camera: yaw/pitch/roll + sideways/forward offset
     this.camKick = { yaw: 0, pitch: 0, roll: 0, ox: 0, oz: 0 };
@@ -263,8 +266,9 @@ class ViewModel {
     const h = this.holds;
     if (h.clinch) return h.clinch === 'hold' ? 'PLUM CLINCH' : 'IN THE PLUM';
     if (h.check) return 'CHECK ' + h.check.toUpperCase() + ' (' + h.checkSide + ')';
+    if (h.parry) return 'PARRY';
     if (h.longGuard) return 'LONG GUARD';
-    if (h.block) return 'BLOCK ' + h.block;
+    if (h.guard) return h.sag ? 'GUARD SAGGING' : 'HIGH GUARD';
     return '';
   }
 

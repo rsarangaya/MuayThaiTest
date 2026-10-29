@@ -1,5 +1,6 @@
 ﻿// Headless physics sanity checks: node tools/sim.js
 // The movement course is switched off in the game map; run with MAP_FULL=1 ($env:MAP_FULL='1') to test against it.
+// There is no jump (the pivot took its key), so the jump / bhop / wall bounce / ground mantle checks are gone.
 const MAP = require('../js/map.js');
 const { Player } = require('../js/player.js');
 const DT = 1 / 120;
@@ -20,58 +21,48 @@ log('sprint speed', Math.abs(p.hspeed - 7.8) < 0.1, p.hspeed.toFixed(2));
 p.input.fwd = 0; run(p, 0.8);
 log('friction stop', p.hspeed < 0.2, p.hspeed.toFixed(2));
 
-// 2. jump apex & landing
-p = mk({ x: 0, z: 70, yaw: 0 }); p.jumpBuf = 0.1; let maxY = 0;
-run(p, 1.2, (pl) => { maxY = Math.max(maxY, pl.pos.y); });
-log('jump apex ~1.47', maxY > 1.3 && maxY < 1.6 && p.onGround && p.pos.y === 0, maxY.toFixed(2));
-
-// 3. slide: crouch while sprinting speeds up then decays
+// 2. slide: crouch while sprinting speeds up then decays
 p = mk({ x: 0, z: 70, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; run(p, 1.5);
 p.input.crouch = true; p.crouchEdge = 0.1; p.step(DT); const s0 = p.hspeed;
 log('slide starts', p.sliding && s0 > 8.5, s0.toFixed(2));
 p.input.fwd = 0; run(p, 3); log('slide ends', !p.sliding && p.hspeed < 3.2, p.hspeed.toFixed(2));
 
-// 4. downhill slide gains speed
+// 3. downhill slide gains speed
 p = mk({ x: 0, z: -22, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; run(p, 3.5);
 log('climb ramp', p.pos.y > 3, 'y=' + p.pos.y.toFixed(2) + ' z=' + p.pos.z.toFixed(1));
 p.input.fwd = 0; p.input.crouch = true; p.crouchEdge = 0.1; p.yaw = Math.PI; p.vel.z = 8; p.vel.y = 0; p.pos.y = 7 * (-24 - p.pos.z) / 26; p.groundN = MAP.normalOf(MAP.solids.find(s => s.kind === 'ramp')); const dv0 = 8; p.step(DT); run(p, 1.0);
 log('downhill slide accelerates', p.sliding && p.hspeed > dv0, dv0.toFixed(2) + ' -> ' + p.hspeed.toFixed(2));
 
-// 5. mantle a 1.4m ledge from ground with jump
-p = mk({ x: 22, z: -3.7, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; run(p, 0.1); p.jumpBuf = 0.1; run(p, 1.2);
-log('mantle 1.4m', p.pos.y > 1.39 && p.events.includes('mantle'), 'y=' + p.pos.y.toFixed(2) + ' ev=' + p.events.join(','));
-
-// 6. low ledge walk-up step
-p = mk({ x: 0, z: -1, yaw: Math.PI }); // stairs at x=-14
+// 4. low ledge walk-up step
 p = mk({ x: -14, z: -2.5, yaw: 0 }); p.input.fwd = 1; let sy = 0; run(p, 6, (pl) => { sy = Math.max(sy, pl.pos.y); });
 log('stairs walk-up', sy > 3.4, 'peak y=' + sy.toFixed(2));
 
-// 7. wall bounce in canyon
-p = mk({ x: 32, z: -24, yaw: -Math.PI / 2 }); // facing +x toward wall at x=35.5
-p.input.fwd = 1; p.input.sprint = true; p.vel.y = 9; p.vel.x = 7.8; p.onGround = false; p.pos.y = 0.3; p.pos.x = 33.2;
-let bounced = false;
-run(p, 1.5, (pl) => { if (!bounced && pl.pos.x > 34.9) { pl.jumpBuf = 0.1; bounced = true; } });
-log('wall bounce', p.events.includes('wallbounce') || p.events.includes('mantle') === false && p.vel.x < 0, 'ev=' + p.events.join(',') + ' vx=' + p.vel.x.toFixed(2));
-
-// 8. crouch slide under bridge (clearance 1.25)
+// 5. crouch slide under bridge (clearance 1.25)
 p = mk({ x: -24, z: -20, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; run(p, 1.2);
 p.input.crouch = true; p.crouchEdge = 0.1; run(p, 1.0);
 log('under bridge', p.pos.z < -30 || p.pos.z < -26, 'z=' + p.pos.z.toFixed(1) + ' slide=' + p.sliding);
 p = mk({ x: -24, z: -20, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; run(p, 2);
 log('blocked standing', p.pos.z > -26.5, 'z=' + p.pos.z.toFixed(1));
 
-// 9. bhop keeps speed
-p = mk({ x: 0, z: 85, yaw: Math.PI }); p.input.fwd = 1; p.input.sprint = true; run(p, 1.2);
-p.input.jump = true; run(p, 2); log('bhop keeps speed', p.hspeed > 7.5, p.hspeed.toFixed(2) + ' ev=' + p.events.filter(e => e === 'bhop').length);
-
-// 10. air strafe gain
-p = mk({ x: 0, z: 85, yaw: Math.PI }); p.input.fwd = 1; p.input.sprint = true; run(p, 1.2);
-const v0 = p.hspeed; p.jumpBuf = 0.1;
-run(p, 0.7, (pl, t) => { pl.input.fwd = 0; pl.input.side = 1; pl.yaw += 0.9 * DT * 3; });
-log('air strafe gain', p.hspeed > v0 + 0.3 || true, v0.toFixed(2) + ' -> ' + p.hspeed.toFixed(2));
-
-// 11. jump pad
+// 6. jump pad
 p = mk({ x: 0, z: 14, yaw: 0 }); let py = 0; run(p, 1.5, (pl) => { py = Math.max(py, pl.pos.y); });
 log('jump pad', py > 5, 'peak ' + py.toFixed(1));
 
+// 7. no jump: nothing lifts a grounded player
+p = mk({ x: 0, z: 70, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; p.jumpBuf = 1; p.input.jump = true; let jy = 0; run(p, 1.5, (pl) => { jy = Math.max(jy, pl.pos.y); });
+log('no jump', jy === 0 && p.onGround, 'maxY=' + jy);
 
+// 8. pivot: facing turns 90 degrees toward the strafe, the body swings round the lead foot (shifts, does not spin on the spot)
+function pivotTest(name, yaw, dir, stance, wantFwd) {
+  const q = mk({ x: 0, z: 70, yaw }); q.stance = stance || 'orthodox';
+  const sx = q.pos.x, sz = q.pos.z; q.startPivot(dir); run(q, 0.5);
+  const fwd = { x: -Math.sin(q.yaw), z: -Math.cos(q.yaw) }, moved = Math.hypot(q.pos.x - sx, q.pos.z - sz);
+  log(name, !q.pivot && Math.abs(fwd.x - wantFwd.x) < 0.01 && Math.abs(fwd.z - wantFwd.z) < 0.01 && moved > 0.15 && moved < 0.6, 'facing ' + fwd.x.toFixed(2) + ',' + fwd.z.toFixed(2) + ' moved ' + moved.toFixed(2));
+  return q;
+}
+pivotTest('pivot right: north -> east', 0, 1, 'orthodox', { x: 1, z: 0 });
+pivotTest('pivot left: north -> west', 0, -1, 'orthodox', { x: -1, z: 0 });
+pivotTest('pivot right from east -> south', -Math.PI / 2, 1, 'orthodox', { x: 0, z: 1 });
+const q1 = pivotTest('southpaw pivot right', 0, 1, 'southpaw', { x: 1, z: 0 });
+const q2 = mk({ x: 0, z: 70, yaw: 0 }); q2.startPivot(1); run(q2, 0.5);
+log('pivot foot depends on stance', Math.hypot(q1.pos.x - q2.pos.x, q1.pos.z - q2.pos.z) > 0.2, 'orthodox ' + q2.pos.x.toFixed(2) + ',' + q2.pos.z.toFixed(2) + ' southpaw ' + q1.pos.x.toFixed(2) + ',' + q1.pos.z.toFixed(2));
