@@ -1,4 +1,4 @@
-﻿// Headless physics sanity checks: node tools/sim.js
+// Headless physics sanity checks: node tools/sim.js
 // The movement course is switched off in the game map; run with MAP_FULL=1 ($env:MAP_FULL='1') to test against it.
 // There is no jump (the pivot took its key), so the jump / bhop / wall bounce / ground mantle checks are gone.
 const MAP = require('../js/map.js');
@@ -52,17 +52,25 @@ log('jump pad', py > 5, 'peak ' + py.toFixed(1));
 p = mk({ x: 0, z: 70, yaw: 0 }); p.input.fwd = 1; p.input.sprint = true; p.jumpBuf = 1; p.input.jump = true; let jy = 0; run(p, 1.5, (pl) => { jy = Math.max(jy, pl.pos.y); });
 log('no jump', jy === 0 && p.onGround, 'maxY=' + jy);
 
-// 8. pivot: facing turns 90 degrees toward the strafe, the body swings round the lead foot (shifts, does not spin on the spot)
-function pivotTest(name, yaw, dir, stance, wantFwd) {
-  const q = mk({ x: 0, z: 70, yaw }); q.stance = stance || 'orthodox';
-  const sx = q.pos.x, sz = q.pos.z; q.startPivot(dir); run(q, 0.5);
-  const fwd = { x: -Math.sin(q.yaw), z: -Math.cos(q.yaw) }, moved = Math.hypot(q.pos.x - sx, q.pos.z - sz);
-  log(name, !q.pivot && Math.abs(fwd.x - wantFwd.x) < 0.01 && Math.abs(fwd.z - wantFwd.z) < 0.01 && moved > 0.15 && moved < 0.6, 'facing ' + fwd.x.toFixed(2) + ',' + fwd.z.toFixed(2) + ' moved ' + moved.toFixed(2));
-  return q;
+// 8. pivot: a 90 degree drift round the empty point PIVOT_R (1.5 m) straight ahead, still facing it (not round the opponent).
+// Facing north with the point at (0, 60.5): D ends you east of it looking west, A west of it looking east.
+function orbit(name, dir, yaw, sx, sz, endX, endZ, faceX, faceZ) {
+  const q = mk({ x: sx, z: sz, yaw }); q.startPivot(dir); const cx = q.pivot.cx, cz = q.pivot.cz; run(q, 0.6);
+  const f = { x: -Math.sin(q.yaw), z: -Math.cos(q.yaw) }, rad = Math.hypot(q.pos.x - cx, q.pos.z - cz);
+  log(name, !q.pivot && Math.abs(q.pos.x - endX) < 0.02 && Math.abs(q.pos.z - endZ) < 0.02 && Math.abs(f.x - faceX) < 0.01 && Math.abs(f.z - faceZ) < 0.01,
+    'at ' + q.pos.x.toFixed(2) + ',' + q.pos.z.toFixed(2) + ' facing ' + f.x.toFixed(2) + ',' + f.z.toFixed(2) + ' radius ' + rad.toFixed(2));
 }
-pivotTest('pivot right: north -> east', 0, 1, 'orthodox', { x: 1, z: 0 });
-pivotTest('pivot left: north -> west', 0, -1, 'orthodox', { x: -1, z: 0 });
-pivotTest('pivot right from east -> south', -Math.PI / 2, 1, 'orthodox', { x: 0, z: 1 });
-const q1 = pivotTest('southpaw pivot right', 0, 1, 'southpaw', { x: 1, z: 0 });
-const q2 = mk({ x: 0, z: 70, yaw: 0 }); q2.startPivot(1); run(q2, 0.5);
-log('pivot foot depends on stance', Math.hypot(q1.pos.x - q2.pos.x, q1.pos.z - q2.pos.z) > 0.2, 'orthodox ' + q2.pos.x.toFixed(2) + ',' + q2.pos.z.toFixed(2) + ' southpaw ' + q1.pos.x.toFixed(2) + ',' + q1.pos.z.toFixed(2));
+orbit('pivot right: north -> ends east of the point, facing west', 1, 0, 0, 62, 1.5, 60.5, -1, 0);
+orbit('pivot left: ends west of the point, facing east', -1, 0, 0, 62, -1.5, 60.5, 1, 0);
+orbit('pivot right again: facing west -> ends north, facing south', 1, Math.PI / 2, 1.5, 60.5, 0, 59, 0, 1);
+// the point stays dead ahead the whole way round
+{ const q = mk({ x: 0, z: 62, yaw: 0 }); q.startPivot(1); const P = q.pivot; let worst = 0;
+  run(q, 0.4, (pl) => { if (!pl.pivot) return; const dx = P.cx - pl.pos.x, dz = P.cz - pl.pos.z, l = Math.hypot(dx, dz); worst = Math.max(worst, 1 - (dx * -Math.sin(pl.yaw) + dz * -Math.cos(pl.yaw)) / l); });
+  log('pivot point stays in line of sight', worst < 0.001, 'worst 1-cos = ' + worst.toExponential(1)); }
+// an opponent standing at the point ends up off to the side of the line: that is the angle
+{ const B = { x: 0, z: 60.5 }, q = mk({ x: 0, z: 62, yaw: 0 }); q.startPivot(1); run(q, 0.6);
+  const dx = B.x - q.pos.x, dz = B.z - q.pos.z, off = Math.acos(Math.min(1, (dx * -Math.sin(q.yaw) + dz * -Math.cos(q.yaw)) / Math.hypot(dx, dz)));
+  log('opponent at the point is still dead ahead (angle comes from them standing elsewhere)', off < 0.01, 'off ' + off.toFixed(3)); }
+{ const B = { x: 0, z: 60 }, q = mk({ x: 0, z: 62, yaw: 0 }); q.startPivot(1); run(q, 0.6);
+  const dx = B.x - q.pos.x, dz = B.z - q.pos.z, off = Math.acos((dx * -Math.sin(q.yaw) + dz * -Math.cos(q.yaw)) / Math.hypot(dx, dz)) * 180 / Math.PI;
+  log('opponent 0.5 m past the point ends up off the line', off > 15 && off < 25, 'off ' + off.toFixed(1) + ' deg'); }

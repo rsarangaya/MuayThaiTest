@@ -5,7 +5,7 @@
 // Units: metres / seconds. Camera forward at yaw 0 is -Z.
 const PC = {
   R: 0.4, HS: 1.8, HC: 1.0, STEP: 0.5,
-  G: 24, PIVOT_DUR: 0.24, PIVOT_ANG: Math.PI / 2, PIVOT_FOOT: 0.26,
+  G: 24, PIVOT_DUR: 0.3, PIVOT_ANG: Math.PI / 2, PIVOT_R: 1.5,
   WALK: 4.8, SPRINT: 7.8, CROUCH: 3.4,
   ACCEL: 8, FRICTION: 7, STOP: 2.2,
   AIR_ACCEL: 8, AIR_CAP: 1.5,
@@ -21,7 +21,6 @@ class Player {
     this.vel = { x: 0, y: 0, z: 0 };
     this.yaw = 0; this.pitch = 0;
     this.input = { fwd: 0, side: 0, crouch: false, sprint: false };
-    this.stance = 'orthodox';                                   // decides the pivot foot (lead foot: left when orthodox, right when southpaw)
     this.onEvent = () => {};
     this.speedCap = null;
     this.respawn({ x: 0, z: 0, yaw: 0 });
@@ -40,27 +39,25 @@ class Player {
     this.pivot = null; this.pivotLast = -9;
   }
 
-  // boxing pivot: turn 90 degrees toward `dir` (+1 right, -1 left) on the lead foot. The foot stays where it is and the body swings around it,
-  // so the position shifts a little instead of spinning on the spot. Returns false if it can't start.
+  // boxing pivot (a drift): take an inside / outside angle. The centre is the empty space PIVOT_R metres straight ahead of you (not the opponent): you step
+  // out and swing the back leg so you end up 90 degrees round that point and still facing it. dir +1 = to your right (the point is north: you end
+  // up east of it, facing west), -1 = left. Whoever stood at that spot is now off to one side of your line. Returns false if it can't start.
   startPivot(dir) {
     if (this.pivot || !dir || !this.onGround || this.mantle || this.sliding) return false;
-    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw), lat = this.stance === 'southpaw' ? PC.PIVOT_FOOT : -PC.PIVOT_FOOT;
-    this.pivot = { t: 0, dir: Math.sign(dir), ang: 0, fx: this.pos.x + cy * lat - sy * 0.15, fz: this.pos.z - sy * lat - cy * 0.15 };   // foot: to the lead side and a bit forward
+    const cx = this.pos.x - Math.sin(this.yaw) * PC.PIVOT_R, cz = this.pos.z - Math.cos(this.yaw) * PC.PIVOT_R;
+    this.pivot = { t: 0, dir: Math.sign(dir), ang: 0, cx, cz, b: this._bearing(cx, cz) };
     this.vel.x *= 0.4; this.vel.z *= 0.4;
     return true;
   }
+  _bearing(x, z) { return Math.atan2(x - this.pos.x, z - this.pos.z) + Math.PI; }   // the yaw that looks straight at (x, z)
   _stepPivot(dt) {
     const P = this.pivot; P.t += dt;
-    const u = Math.min(1, P.t / PC.PIVOT_DUR), e = u * u * (3 - 2 * u), ang = P.dir * PC.PIVOT_ANG * e, da = ang - P.ang; P.ang = ang;
-    const d = -da, c = Math.cos(d), s = Math.sin(d);             // yaw falls when turning right; rotate the body about the foot by the same angle
-    const rx = this.pos.x - P.fx, rz = this.pos.z - P.fz, nx = P.fx + rx * c + rz * s, nz = P.fz + rz * c - rx * s;
-    if (!this._blocked(nx, nz, this.pos.y)) { this.pos.x = nx; this.pos.z = nz; }
-    this.yaw += d;
+    const u = Math.min(1, P.t / PC.PIVOT_DUR), e = u * u * (3 - 2 * u), da = P.dir * PC.PIVOT_ANG * e - P.ang; P.ang += da;
+    const c = Math.cos(da), s = Math.sin(da), rx = this.pos.x - P.cx, rz = this.pos.z - P.cz, nx = P.cx + rx * c + rz * s, nz = P.cz + rz * c - rx * s;
+    if (!this._blocked(nx, nz, this.pos.y)) { this.pos.x = nx; this.pos.z = nz; }          // rope / wall in the way: the orbit stops short, the view stays on the point
+    const b = this._bearing(P.cx, P.cz); this.yaw += Math.atan2(Math.sin(b - P.b), Math.cos(b - P.b)); P.b = b;   // added, so mouse turns during the pivot still count
     if (u >= 1) { this.pivot = null; this.pivotLast = this.t; }
   }
-  // true while pivoting and for `win` seconds after (hook bonus window)
-  pivotRecent(win) { return !!this.pivot || this.t - this.pivotLast < win; }
-
   get hspeed() { return Math.hypot(this.vel.x, this.vel.z); }
   get height() { return this.crouched ? PC.HC : PC.HS; }
   get targetEye() { return this.mantle ? 1.2 : this.sliding ? 0.72 : this.crouched ? 0.95 : 1.65; }

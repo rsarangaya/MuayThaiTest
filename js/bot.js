@@ -94,6 +94,7 @@ const BMOVES = {
 const BCL = {
   hold: P({ la: [1.8, 0.15, 0, 1.2], ra: [1.8, -0.15, 0, 1.2], tp: -0.28, hp: -0.2, drop: 0.06, fwd: 0.1 }),
   held: P({ la: [0.9, 0.3, 0, 1.7], ra: [0.9, -0.3, 0, 1.7], tp: -0.6, hp: -0.7, drop: 0.12 }),
+  struggle: { dur: 0.45, keys: [K(0, null), K(0.25, P({ la: [1.05, 0.75, 0, 1.45], ra: [1.05, -0.75, 0, 1.45], tp: 0.15, hp: 0.35, drop: 0.14 }), 'o'), K(1, null)] },   // being held: chin down, hands shove the grip apart
   knee: { dur: 0.7, keys: [K(0, null), K(0.4, P({ rl: [1.7, 0.05, 0, 1.6], la: [1.8, 0.15, 0, 1.2], ra: [1.8, -0.15, 0, 1.2], tp: -0.38, hp: -0.2, drop: 0.05, fwd: 0.1 }), 'i'), K(0.55, P({ rl: [1.7, 0.05, 0, 1.6], la: [1.8, 0.15, 0, 1.2], ra: [1.8, -0.15, 0, 1.2], tp: -0.38, hp: -0.2, drop: 0.05, fwd: 0.1 })), K(1, null)] },
 };
 BMOVES.plum = { type: 'plum', side: 'L', level: 'high', dur: 0.75, active: [0.5, 0.62], reach: 1.5, dmg: 0,
@@ -291,12 +292,14 @@ class Bot {
     this.hp = 100; this.ko = false; this.down = false; this.koT = 0; this.t = 0; this.facing = 0;
     this.vx = 0; this.vz = 0; this.kbx = 0; this.kbz = 0;
     this.attack = null; this.queue = []; this.cool = 1.2; this.gap = 0; this.def = null; this.react = null;
-    this.stun = 0; this.strafe = Math.random() < 0.5 ? 1 : -1; this.strafeT = 2; this.evadeT = 0; this.speed = 0;
+    this.slowUntil = 0; this.struggleT = 0; this.stun = 0; this.strafe = Math.random() < 0.5 ? 1 : -1; this.strafeT = 2; this.evadeT = 0; this.speed = 0;
     this.stam = 100; this.locked = false; this._counter = null; this.hits = [];
     this.remote = { x: this.x, y: this.y, z: this.z, yaw: 0, hold: null, crouch: false };
     this.f.anim = null; this.f.base = STANCE; this.f.cur = STANCE.slice();
   }
   get dist() { return this.lastDist || 9; }
+  struggle() { this.struggleT = 0.4; this.f.play(BCL.struggle); }   // one escape attempt while the player holds its head (the game adds the effect on the escape bar)
+  facingErr(player) { const d = Math.atan2(-(player.pos.x - this.x), -(player.pos.z - this.z)) - this.facing; return Math.abs(Math.atan2(Math.sin(d), Math.cos(d))); }   // radians off the player
   inRing(x, z, m) { const r = this.ring; return Math.abs(x - r.cx) < r.hx + m && Math.abs(z - r.cz) < r.hz + m; }
 
   // --- being attacked ---
@@ -342,6 +345,8 @@ class Bot {
   }
   // the player leaned back / slipped / pivoted: a read bot hits what that evasion can't avoid (body + leg shots after a lean, hooks after a slip or pivot)
   playerEvade(kind, dist) {
+    // a pivot: the bot follows it round (keeps squaring up fast) or loses the player for a moment, so you can land a strike from the angle. Follows more often on higher skill.
+    if (kind === 'pivot' && this.mode === 'spar' && !this.ko && !this.locked) this.slowUntil = Math.random() < Math.max(0, this.skill - 0.4) * 1.1 ? 0 : this.t + 0.7 + Math.random() * 0.5;
     if (this.mode !== 'spar' || this.ko || this.locked || this.attack || this.stun > 0 || this.def || dist > 2.3 || this.stam < 15) return;
     if (Math.random() > 0.55 * this.skill) return;
     const r = Math.random();
@@ -463,8 +468,13 @@ class Bot {
     }
     if (this.locked) {                                  // clinched: the game positions and poses the bot
       f.update(dt, 0);
-      f.root.position.set(this.x, this.y, this.z);
-      f.root.rotation.set(0, this.facing, 0);
+      let ox = 0, oz = 0, tilt = 0;
+      if (this.struggleT > 0) {                         // wrenching out of the plum: jerks side to side and heaves back
+        const k = this.struggleT / 0.4, w = Math.sin(this.t * 48) * k * 0.05; this.struggleT -= dt;
+        ox = Math.cos(this.facing) * w; oz = -Math.sin(this.facing) * w; tilt = 0.18 * k;
+      }
+      f.root.position.set(this.x + ox, this.y, this.z + oz);
+      f.root.rotation.set(tilt, this.facing, 0);
       return;
     }
     // stamina: spent by attacks, comes back while it isn't swinging; a gassed player makes it greedier
@@ -491,7 +501,8 @@ class Bot {
     // facing: walk to the corner looking where it is going, then watch the player from there
     let tx = dx, tz = dz; if (!engaged && cornerD > 0.4) { tx = cornerX - this.x; tz = cornerZ - this.z; }
     const want = Math.atan2(-tx, -tz); let diff = want - this.facing; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    const turn = (this.attack && f.u > 0.2 ? 1.5 : 7) * dt; this.facing += Math.max(-turn, Math.min(turn, diff));
+    const turn = (this.attack && f.u > 0.2 ? 1.5 : this.t < this.slowUntil ? 1.0 : 7) * dt;   // slowUntil: lost the player after a pivot
+    this.facing += Math.max(-turn, Math.min(turn, diff));
 
     let mvx = 0, mvz = 0;
     if (this.ko) {
@@ -519,7 +530,8 @@ class Bot {
       } else if (this.stun <= 0 && !this.def) {
         if (this.queue.length) {
           this.gap -= dt;
-          if (this.gap <= 0) {
+          if (this.gap <= 0 && this.facingErr(player) > 0.6) this.gap = 0.05;           // still turning to face the player: hold the next strike
+          else if (this.gap <= 0) {
             const nxt = this.queue.shift(), need = BMOVES[nxt].reach + 0.15;
             if (engaged && dist <= need) this._launch(nxt, player); else this.queue.length = 0;
           }

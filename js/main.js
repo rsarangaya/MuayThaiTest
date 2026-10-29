@@ -107,10 +107,10 @@
     const dmgScale = (0.65 + 0.35 * Math.min(1, stamina / 40)) * (held ? 1.4 : 1);   // tired strikes hurt less
     // combo: distinct strikes that keep landing build a bonus (3+), a heavy finisher adds more; a repeated move or any miss / block resets it
     const n = lastRepeat ? 1 : (time - comboT < 2.0 ? combo : 0) + 1;
-    const angle = (A.type || name) === 'hook' && player.pivotRecent(0.4) ? 1.15 : 1;      // a hook thrown out of a pivot comes in from the blind side
+    const angle = bot.facingErr(player) > 0.6 ? 1.2 : 1;      // the bot is still turning to face you after a pivot: a strike from its blind side
     const cMul = (n >= 3 ? (1 + 0.08 * Math.min(3, n - 2)) * (HEAVY.has(name) ? 1.15 : 1) : 1) * angle, base = A.dmg * dmgScale;
     const res = bot.receive({ type: A.type || name, side, level: A.level, reach: def.reach, dmg: base * cMul, cap: base * 2 * angle, dist: d, dx: bx / d, dz: bz / d, counter: time < counterUntil, startDist });
-    if (res === 'hit') { counterUntil = 0; combo = n; comboT = time; if (angle > 1) toast('ANGLE · +15%', 'hot'); if (n >= 2) toast('COMBO ×' + n + (cMul > 1 ? ' · +' + Math.round((cMul - 1) * 100) + '%' : ''), 'hot'); }
+    if (res === 'hit') { counterUntil = 0; combo = n; comboT = time; if (angle > 1) toast('ANGLE · +20%', 'hot'); if (n >= 2) toast('COMBO ×' + n + (cMul > 1 ? ' · +' + Math.round((cMul - 1) * 100) + '%' : ''), 'hot'); }
     else combo = 0;
     if (held && res === 'hit') clinch.meter = Math.max(0, clinch.meter - 18);                   // damage wears down its escape
     if (training()) trainNote(name, A, res, bot.lastDmg || A.dmg * dmgScale);
@@ -214,7 +214,7 @@
   const ACTIONS = [
     A('Movement', 'fwd', 'Move forward', ['KeyW']), A('Movement', 'back', 'Move back', ['KeyS']),
     A('Movement', 'left', 'Strafe left', ['KeyA']), A('Movement', 'right', 'Strafe right', ['KeyD']),
-    A('Movement', 'pivot', 'Pivot (hold A / D + press: turn 90° that way on the lead foot)', ['Space']), A('Movement', 'crouch', 'Crouch / slide', ['KeyC', 'ControlLeft']),
+    A('Movement', 'pivot', 'Pivot (hold A / D + press: swing 90° round the space ahead of you to take an angle)', ['Space']), A('Movement', 'crouch', 'Crouch / slide', ['KeyC', 'ControlLeft']),
     A('Movement', 'walk', 'Walk (sprint if auto-sprint is off)', ['ShiftLeft']), A('Movement', 'autoSprint', 'Toggle auto-sprint', ['KeyT']),
     A('Punches · aim low = body, level = head', 'jab', 'Jab (lead hand)', ['Mouse0']), A('Punches · aim low = body, level = head', 'cross', 'Cross (rear hand)', ['Mouse2']),
     A('Punches · aim low = body, level = head', 'hookR', 'Right hook', ['KeyR', 'Mouse1']), A('Punches · aim low = body, level = head', 'hookL', 'Left hook', ['KeyE']),
@@ -316,7 +316,7 @@
     lean.amt = amt; lean.disp = amt * L.dist;
     if (e >= L.end) lean = null;
   }
-  // boxing pivot (Space + A / D): 90 degrees on the lead foot, into the strafe direction. Costs like a lean (doubles when spammed).
+  // boxing pivot (Space + A / D): a 90 degree drift round the space ahead of you into the strafe direction, still facing it. Costs like a lean (doubles when spammed).
   let pivotDodged = false; const pivotStreak = [0, -9], PIVOT_COST = 5;
   function startPivot() {
     if (clinch || downT > 0 || (versus && vsKO > 0) || lean || player.pivot) return;
@@ -402,7 +402,7 @@
   function startClinch(holder) {
     if (clinch) return;
     const dx = bot.x - player.pos.x, dz = bot.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
-    clinch = { holder, t: 0, meter: 0, last: null, dirx: dx / d, dirz: dz / d, nextKnee: 1.0, kneeAt: null };
+    clinch = { holder, t: 0, meter: 0, last: null, dirx: dx / d, dirz: dz / d, nextKnee: 1.0, kneeAt: null, nextStruggle: 0.5 };
     player.vel.x = player.vel.z = 0;
     bot.locked = true; bot.attack = null; bot.queue.length = 0; bot.def = null; bot.react = null; bot._counter = null; bot.f.anim = null;
     vm.setHolds({ clinch: holder === 'player' ? 'hold' : 'held' });
@@ -437,7 +437,10 @@
     if (c.holder === 'player') {
       stamina = Math.min(100, stamina + 5 * dt); stamDelay = 0.6;   // the one holding the plum recovers a little; the one struggling pays
       bot.stam = Math.max(0, bot.stam - 7 * dt);
-      c.meter += dt * (17 + bot.skill * 6) * (0.55 + 0.45 * bot.stam / 100);
+      const grit = 0.55 + 0.45 * bot.stam / 100;                    // a tired bot pulls weaker
+      c.meter += dt * (7 + bot.skill * 3) * grit;                   // steady pull, plus a visible wrench every second or so (better and quicker at higher skill)
+      c.nextStruggle -= dt;
+      if (c.nextStruggle <= 0) { c.nextStruggle = 1.15 - bot.skill * 0.35 + Math.random() * 0.4; bot.struggle(); c.meter += (6 + 10 * bot.skill) * grit; shake = Math.max(shake, 0.14); }
       label.textContent = 'PLUM · BOT STRUGGLING  (knee / elbow to wear it down · ' + codeLabel(binds.clinch[0]) + ' to release)'; fill.style.background = '#ff7a2e';
       if (stamina <= 0) endClinch('exhausted'); else if (c.meter >= 100) endClinch('broke');
     } else {
