@@ -1,119 +1,127 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Muay Thai FPS - Movement Lab</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  :root { --fg:#f2f4f8; --dim:#9aa4b8; --acc:#ffb020; --hot:#ff4d5e; --panel:rgba(12,15,22,.72); }
-  * { box-sizing:border-box; }
-  html,body { margin:0; height:100%; overflow:hidden; background:#10131a; color:var(--fg); font:13px/1.4 "Segoe UI",system-ui,sans-serif; user-select:none; }
-  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
-  #crosshair { position:fixed; left:50%; top:50%; width:4px; height:4px; margin:-2px; border-radius:50%; background:#fff; opacity:.7; }
-  #aim { position:fixed; left:50%; top:calc(50% + 18px); transform:translateX(-50%); font:700 10px Consolas,monospace; letter-spacing:.12em; color:#fff; opacity:.55; text-shadow:0 1px 3px #000; white-space:nowrap; }
-  #speedbox { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); text-align:center; text-shadow:0 1px 4px #000; }
-  #speed { font:700 44px/1 "Consolas",monospace; }
-  #speedbox small { font-size:12px; color:var(--dim); margin-left:4px; }
-  #meter { width:220px; height:6px; background:rgba(255,255,255,.18); border-radius:3px; margin:6px auto 4px; overflow:hidden; }
-  #bar { height:100%; width:0; background:#6fd3ff; transition:background .2s; } #bar.fast { background:var(--acc); }
-  #state { letter-spacing:.15em; font-weight:600; font-size:12px; }
-  #peak { color:var(--dim); font-size:11px; font-family:Consolas,monospace; }
-  #action { position:fixed; left:50%; bottom:130px; transform:translateX(-50%); font:700 18px/1 Consolas,monospace; letter-spacing:.12em; color:var(--acc); text-shadow:0 1px 4px #000; transition:opacity .1s; }
-  #toasts { position:fixed; right:14px; top:46%; text-align:right; pointer-events:none; }
-  .toast { font:700 16px/1.4 Consolas,monospace; letter-spacing:.12em; text-shadow:0 2px 6px #000; animation:pop 1.4s forwards; color:#fff; }
-  .toast.hot { color:var(--acc); } .toast.hit { color:var(--hot); }
-  @keyframes pop { 0%{opacity:0;transform:translateX(24px)} 12%{opacity:1;transform:translateX(0)} 80%{opacity:1} 100%{opacity:0;transform:translateY(-8px)} }
-  #topleft { position:fixed; left:14px; top:12px; color:var(--dim); font-size:12px; text-shadow:0 1px 3px #000; }
-  #topleft b { color:var(--fg); }
-  #help { position:fixed; left:14px; top:60px; background:var(--panel); border-radius:8px; padding:10px 14px; max-width:300px; backdrop-filter:blur(6px); }
-  #help h4 { margin:8px 0 3px; font-size:11px; letter-spacing:.14em; color:var(--acc); text-transform:uppercase; } #help h4:first-child { margin-top:0; }
-  #help div { display:flex; justify-content:space-between; gap:12px; } #help span:first-child { color:var(--dim); }
-  kbd { background:#2a3040; border-radius:3px; padding:0 5px; font:12px Consolas,monospace; color:var(--fg); }
-  .hidden { display:none !important; }
-  #overlay { position:fixed; inset:0; background:rgba(8,10,16,.78); display:flex; align-items:center; justify-content:center; cursor:pointer; }
-  #overlay .card { text-align:center; max-width:520px; padding:28px 34px; background:#161b26; border-radius:14px; box-shadow:0 10px 40px #000a; }
-  #overlay h1 { margin:0 0 4px; font-size:26px; letter-spacing:.04em; } #overlay p { color:var(--dim); margin:4px 0 16px; }
-  #overlay .go { display:inline-block; padding:10px 26px; background:var(--acc); color:#1a1200; font-weight:700; border-radius:8px; }
-  .settings { margin-top:18px; text-align:left; cursor:default; display:grid; grid-template-columns:90px 1fr 44px; gap:8px 10px; align-items:center; font-size:12px; color:var(--dim); }
-  .settings input[type=range] { width:100%; } .settings .v { color:var(--fg); font-family:Consolas,monospace; text-align:right; }
-  .hint { margin-top:14px; font-size:11px; color:var(--dim); }
-  #bars { position:fixed; left:50%; top:14px; transform:translateX(-50%); display:flex; gap:18px; align-items:center; font:700 11px Consolas,monospace; letter-spacing:.14em; text-shadow:0 1px 3px #000; }
-  .bar { width:230px; height:10px; background:rgba(0,0,0,.45); border-radius:5px; overflow:hidden; border:1px solid rgba(255,255,255,.25); }
-  .bar i { display:block; height:100%; width:100%; transition:width .12s; } #hpYou { background:#4fd17a; } #hpBot { background:#ff5a4d; float:right; }
-  #train { position:fixed; right:14px; top:12px; background:var(--panel); border-radius:8px; padding:8px 12px; font:12px/1.5 Consolas,monospace; max-width:340px; text-shadow:0 1px 3px #000; }
-  #train b { color:var(--acc); letter-spacing:.14em; } #train .dim { color:var(--dim); font-size:10px; margin-top:3px; }
-  #prompt { position:fixed; left:50%; bottom:170px; transform:translateX(-50%); font:700 18px/1 Consolas,monospace; letter-spacing:.12em; color:#5dffa0; text-shadow:0 1px 5px #000; white-space:nowrap; pointer-events:none; }
-  .settings select { background:#2a3040; color:var(--fg); border:1px solid #3d4658; border-radius:5px; padding:3px 6px; font:12px "Segoe UI",system-ui,sans-serif; grid-column:2 / 4; }
-  #bars2 { position:fixed; left:50%; top:30px; transform:translateX(-50%); display:flex; gap:18px; align-items:center; font:700 9px Consolas,monospace; letter-spacing:.14em; color:var(--dim); text-shadow:0 1px 3px #000; }
-  #bars2 .bar { height:6px; } #bars2 span { width:22px; text-align:center; }
-  #stYou, #stBot { background:#f2c230; } #stBot { float:right; } .bar i.low { background:#ff7a2e !important; }
-  #clinch { position:fixed; left:50%; top:64%; transform:translateX(-50%); text-align:center; font:700 14px Consolas,monospace; letter-spacing:.12em; text-shadow:0 1px 4px #000; width:300px; }
-  #clinch .bar { width:300px; height:12px; margin-top:6px; } #clinchFill { background:#6fd3ff; width:0; }
-  #binds { margin-top:12px; text-align:left; cursor:default; max-height:34vh; overflow:auto; display:grid; grid-template-columns:1fr auto auto; gap:5px 8px; align-items:center; font-size:12px; color:var(--dim); padding-right:6px; }
-  #binds button, .btn { background:#2a3040; color:var(--fg); border:1px solid #3d4658; border-radius:5px; padding:3px 8px; min-width:92px; font:12px Consolas,monospace; cursor:pointer; }
-  #binds button.wait { background:var(--acc); color:#1a1200; } #binds button:hover, .btn:hover { border-color:var(--acc); }
-  #telegraph { position:fixed; right:14px; top:40%; text-align:right; font:700 14px Consolas,monospace; letter-spacing:.1em; color:#ff6b5a; text-shadow:0 1px 5px #000; opacity:0; white-space:nowrap; pointer-events:none; }
-  #hurt { position:fixed; inset:0; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(220,20,20,.85) 100%); }
-</style>
-</head>
-<body>
-<canvas id="c"></canvas>
-<div id="crosshair"></div>
-<div id="aim"></div>
-<div id="hurt"></div>
-<div id="bars"><span>YOU</span><div class="bar"><i id="hpYou"></i></div><div class="bar"><i id="hpBot"></i></div><span>BOT</span></div>
-<div id="bars2"><span>STA</span><div class="bar st"><i id="stYou"></i></div><div class="bar st"><i id="stBot"></i></div><span>STA</span></div>
-<div id="clinch" class="hidden"><div id="clinchLabel"></div><div class="bar"><i id="clinchFill"></i></div></div>
-<div id="train" class="hidden"><b>TRAINING</b> · BOT: <span id="trBot"></span><br><span id="trStats"></span><br><span id="trLast"></span><div class="dim">M spar/training · U bot mode · N difficulty</div></div>
-<div id="vsBox" class="hidden" style="position:fixed;left:50%;top:44px;transform:translateX(-50%);font:700 11px Consolas,monospace;letter-spacing:.14em;color:var(--acc);text-shadow:0 1px 3px #000;white-space:nowrap"></div>
-<div id="prompt"></div>
-<div id="telegraph"></div>
-<div id="topleft"><b id="zone"></b> &nbsp;·&nbsp; <span id="fps"></span><br><kbd>F1</kbd> controls &nbsp; <kbd>Backspace</kbd> respawn &nbsp; <kbd>[</kbd> <kbd>]</kbd> zone</div>
-<div id="help"></div>
-<div id="speedbox">
-  <div><span id="speed">0.0</span><small>m/s</small></div>
-  <div id="meter"><div id="bar"></div></div>
-  <div id="state">IDLE</div>
-  <div id="peak">TOP 0.0</div>
-</div>
-<div id="action"></div>
-<div id="toasts"></div>
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Romeo's Pixel Dungeon Inspired Zombie Rogue Like Game Name TBD but Soon Maybe ALso ITs HorroR and Harder To Beat Ideally</title>
+<link rel="stylesheet" href="css/style.css?v=1023c">
+</head><body>
+<div id="app">
+ <div id="mapwrap">
+  <canvas id="cv"></canvas>
 
-<div id="overlay">
-  <div class="card">
-    <h1>MUAY THAI FPS · MOVEMENT LAB</h1>
-    <p>Walk to the green corner and press the enter key to step into the ring. A sparring bot waits inside; heavy bags react to strikes. Pick a difficulty or switch to training below. Hit damage is a placeholder for the real battle system.</p>
-    <span class="go">CLICK TO PLAY</span>
-    <div class="settings">
-      <label for="sens">Sensitivity</label><input id="sens" type="range" min="0.2" max="3" step="0.05"><span class="v" id="sensv"></span>
-      <label for="fov">Field of view</label><input id="fov" type="range" min="60" max="100" step="1"><span class="v" id="fovv"></span>
-      <label for="auto">Auto-sprint</label><input id="auto" type="checkbox"><span></span>
-      <label for="modeSel">Mode</label><select id="modeSel"><option value="spar">Sparring</option><option value="train">Training (no damage, infinite stamina)</option></select>
-      <label for="diffSel">Difficulty</label><select id="diffSel"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option><option value="nak">Nak Muay (brutal)</option></select>
-      <label for="trainSel">Training bot</label><select id="trainSel"><option value="dummy">Dummy (stands still)</option><option value="guard">Guard (holds a high guard)</option><option value="drill">Drill (slow single strikes at you)</option></select>
-    </div>
-    <div class="settings" id="versus" style="display:block;margin-top:14px">
-      <b style="color:var(--fg);letter-spacing:.1em;font-size:11px">PLAY A FRIEND (ONLINE)</b><br>
-      <button class="btn" id="vsHost">Create room</button>
-      &nbsp;or&nbsp; <input id="vsCode" type="text" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" style="width:70px;text-transform:uppercase;background:#2a3040;color:var(--fg);border:1px solid #3d4658;border-radius:5px;padding:3px 6px;font:12px Consolas,monospace">
-      <button class="btn" id="vsJoin" style="min-width:60px">Join</button>
-      <button class="btn hidden" id="vsLeave" style="min-width:60px">Leave</button>
-      <div id="vsStatus" style="margin-top:6px;color:var(--acc);min-height:16px"></div>
-    </div>
-    <div class="settings" style="display:block;margin-top:10px"><button class="btn" id="bindToggle">Customize controls ▾</button> <button class="btn hidden" id="bindReset">Reset to default</button></div>
-    <div id="binds" class="hidden"></div>
-    <div class="hint">Esc to pause · F1 toggles the controls list in-game</div>
+  <!-- top-left: vitals -->
+  <div id="hudTop">
+   <div class="meter" id="hp"><i></i><span></span></div>
+   <div class="meter" id="hu"><i></i><span></span></div>
+   <button id="bStats" onclick="toggleStats()" aria-expanded="false" title="Show or hide the other stats">Stats <span id="statArrow">▾</span></button>
+   <div id="statsPanel" style="display:none">
+    <div id="statList"></div>
+    <div id="where"></div>
+   </div>
   </div>
+  <!-- top-right: system buttons (the minimap is drawn on the canvas underneath) -->
+  <div id="hudRight"><button class="ibtn" id="bLog" title="Message log (L)">📜</button><button class="ibtn" id="bMenu" title="Menu (Esc)">☰</button></div>
+
+  <div id="hint"></div>
+  <div id="inspect"></div>
+
+  <!-- bottom: fading messages + action bar -->
+  <div id="bottom">
+   <div id="log"></div>
+   <div id="quickbar"></div>
+   <div id="toolbar">
+    <button class="tbtn" id="bWait" title="Wait a turn (Space)"><b>⌛</b><small>Wait</small></button>
+    <button class="tbtn" id="bRest" title="Rest until healed (R)"><b>💤</b><small>Rest</small></button>
+    <button class="tbtn" id="bScent" title="Sniff out enemies and the layout (X)"><b>👃</b><small>Scent</small></button>
+    <button class="tbtn" id="bPack" title="Backpack and body (I)"><b>🎒</b><small>Pack</small></button>
+    <button class="tbtn" id="bGround" title="Items on this tile (G)" style="display:none"><b>✋</b><small>Ground</small></button>
+    <button class="tbtn" id="bDown" title="Travel to the stairs down (&gt;)" style="display:none"><b>⬇</b><small>Down</small></button>
+    <button class="tbtn" id="bUp" title="Travel to the stairs up (&lt;)" style="display:none"><b>⬆</b><small>Up</small></button>
+    <button class="tbtn" id="bView" title="Re-centre the view" style="display:none"><b>◎</b><small>Centre</small></button>
+   </div>
+  </div>
+ </div>
 </div>
 
-<script src="lib/three.min.js"></script>
-<script src="js/map.js"></script>
-<script src="js/player.js"></script>
-<script src="js/viewmodel.js"></script>
-<script src="js/combat.js"></script>
-<script src="js/bot.js"></script>
-<script src="lib/peerjs.min.js"></script>
-<script src="js/net.js"></script>
-<script src="js/main.js"></script>
-</body>
-</html>
+<!-- backpack window: body, pack and ground scroll; the action bar below stays put -->
+<div id="pack" class="modal"><div class="win" id="packWin">
+ <div class="winHead"><b>BODY &amp; PACK</b><button class="ibtn" id="packClose">✕</button></div>
+ <div class="winBody">
+  <h3>BODY (tap to inspect)</h3><div id="slots"></div>
+  <h3 id="packH">BACKPACK</h3><div id="inv"></div>
+  <h3 id="floorH" style="display:none">ON THE GROUND</h3><div id="floor" style="display:none"></div>
+ </div>
+ <div id="detail">Tap an item to inspect it.</div>
+</div></div>
+
+<div id="menu"><div>
+ <h1 id="gameTitle">Romeo's Pixel Dungeon Inspired Zombie Rogue Like Game Name TBD but Soon Maybe ALso ITs HorroR and Harder To Beat Ideally</h1><p>A borrowed body. A finite life.<br><small id="buildStamp"></small></p>
+ <p id="marrowShow" class="info"></p>
+
+ <!-- title screen -->
+ <div id="menuMain">
+  <div class="mainBtns">
+   <button id="mClose" style="display:none">Resume</button>
+   <button id="mContinue" style="display:none">Continue</button>
+   <button id="mNewGame">New Game</button>
+  </div>
+  <p id="menuNote" class="warn"></p>
+  <p><label>Starting perk <select id="perkSel"></select></label> &nbsp; <label>Seed <input id="seedIn" placeholder="random" size="10"></label></p>
+  <div class="mainBtns"><button id="mCodex">Codex &amp; Perks</button><button id="mManual">Field Manual</button></div>
+  <details><summary>Settings &amp; controls</summary>
+   <p>Arrows/WASD/QEZC move · Space wait · R rest · X scent · I pack · G pick up · L log · &gt; / &lt; stairs · TAB inspect · Shift+1-9 quick buttons.</p>
+   <p>Tap the map to travel, bump to attack, right-click or long-press a monster to inspect it. Drag to look around, pinch or scroll to zoom, tap the minimap to jump.</p>
+   <p>Tap an attached graft in your pack to Detach, Devour, or use its active ability. Red warning tiles show where a blow lands next turn.</p>
+   <p>Descend 20 floors in four stages of five. Runs autosave as you play, so you can leave and come back, but there is no manual save or load: a bad move stays bad.</p>
+   <fieldset><legend>Settings</legend>
+    <label><input type="checkbox" id="sSound"> Sound</label>
+    <label><input type="checkbox" id="sShake"> Screen shake</label>
+    <label><input type="checkbox" id="sReduce"> Reduced motion</label>
+    <label><input type="checkbox" id="sHints"> Hints</label>
+    <label><input type="checkbox" id="sHaptic"> Vibration</label>
+    <label><input type="checkbox" id="sMap"> Minimap</label>
+    <label><input type="checkbox" id="sLowFx"> Low-detail lighting (faster on old phones)</label>
+    <label>Brightness <select id="sBright"><option value="0">Dim</option><option value="1">Normal</option><option value="2">Bright</option></select></label>
+    <label>Interface size <select id="sText"><option value="0.85">Small</option><option value="1">Normal</option><option value="1.2">Large</option><option value="1.4">Largest</option></select></label>
+   </fieldset>
+   <p><button id="mCopy">Copy run summary</button><button id="mDebug">Debug console ()</button> <small>seed now: <span id="seedShow"></span></small></p>
+  </details>
+  <div class="mainBtns"><button id="mExit">Exit</button></div>
+ </div>
+
+ <!-- saved runs (only reached through Continue) -->
+ <div id="menuRuns" style="display:none">
+  <h3>CONTINUE A RUN</h3><div id="runSlots"></div>
+  <p><small>Runs autosave as you play. There is no manual save or load: a bad move stays bad.</small></p>
+  <button id="mRunsBack">Back</button>
+ </div>
+</div></div>
+<div id="exitScreen"><div><h2>Thanks for playing</h2><p>Your runs are saved. You can close this tab.</p><button id="exitBack">Back to the title</button></div></div>
+<div id="codex" class="modal"><div><h2>Codex</h2><div id="codexTabs"><button data-tab="mon">Bestiary</button><button data-tab="part">Grafts</button><button data-tab="perk">Perks</button><button data-tab="rec">Records</button></div><div id="codexBody"></div><button id="codexClose">Close</button></div></div>
+<div id="manual" class="modal"><div><h2>Field manual</h2><div id="manualBody"></div><button id="manualClose">Close</button></div></div>
+<div id="stageChoice" class="modal"><div><h2 id="stageTitle"></h2><p>Choose what waits in the next stage. It applies to all five floors.</p><div id="stageBody"></div></div></div>
+<div id="altar" class="modal"><div><h2>The altar</h2><p id="altarText"></p><div id="altarList"></div><p id="altarOdds"></p><button id="altarGo" class="danger">Make the offering</button><button id="altarLeave">Leave</button></div></div>
+<div id="qpick" class="modal"><div><h2 id="qpTitle"></h2><p><small>Choose what this quickslot holds. Only usable or throwable items and abilities of attached grafts are listed.</small></p><div id="qpList"></div><button id="qpClear">Clear slot</button><button id="qpClose">Cancel</button></div></div>
+<div id="tip"></div>
+<div id="bargain" class="modal"><div><h2>A bargain with the dead</h2><p>Give up <b>half your max HP</b> for this whole run.</p><p>In return, one <b>random endgame graft</b> is stitched onto you before you start, and it <b>rots 75% slower</b> than anything else.</p><p><small>A harder, riskier way to play. You will not know which graft it is until you take the deal.</small></p><button id="bgYes" class="danger">Take the bargain</button><button id="bgNo">No bargain</button><button id="bgCancel">Back</button></div></div>
+<div id="over"><div><h2 id="ot"></h2><p id="ob"></p><button id="bRise">Rise Again</button><button id="bToMenu">Main menu</button><button id="oCopy">Copy run summary</button></div></div>
+<div id="logModal" class="modal"><div><h2>Message log</h2><div id="logFull"></div><button id="logClose">Close</button></div></div>
+<div id="console" class="modal"><div><h2>Debug console</h2><div id="conOut"></div><input id="conIn" placeholder="type help, press Enter" autocomplete="off" spellcheck="false"><button id="conClose">Close</button></div></div>
+<script src="js/util.js?v=1023c"></script>
+<script src="js/settings.js?v=1023c"></script>
+<script src="js/audio.js?v=1023c"></script>
+<script src="js/sprites.js?v=1023c"></script>
+<script src="js/data.js?v=1023c"></script>
+<script src="js/textures.js?v=1023c"></script>
+<script src="js/state.js?v=1023c"></script>
+<script src="js/level.js?v=1023c"></script>
+<script src="js/game.js?v=1023c"></script>
+<script src="js/abilities.js?v=1023c"></script>
+<script src="js/hints.js?v=1023c"></script>
+<script src="js/meta.js?v=1023c"></script>
+<script src="js/runs.js?v=1023c"></script>
+<script src="js/render.js?v=1023c"></script>
+<script src="js/ui.js?v=1023c"></script>
+<script src="js/debug.js?v=1023c"></script>
+<script src="js/dreamers.js?v=1023c"></script>
+<script src="js/input.js?v=1023c"></script>
+</body></html>
